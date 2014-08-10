@@ -20,6 +20,10 @@
  * to/from the stack, although have yet to time the differences.
  * Still looks to be address calculations inside each loop.
  *
+ * Uses load/stores which require 32-byte alignment for samples and output arrays.
+ * http://code.google.com/p/dynamorio/issues/detail?id=438 suggests that on aligned data
+ * movaps and movapd take about the same time, but but movaps takes one less byte to encode the instruction.
+ * Allowing unaligned data gives more freedom on input strides, but at the expense of a slowdown.
  *
  * http://www.thinkingandcomputing.com/2014/02/28/using-avx-instructions-in-matrix-multiplication/ is
  * an example optimisation which has variables named after the vector registers and re-uses the

@@ -9,7 +9,10 @@ while num_samples <= 128 * 1024
     samples = complex(rand([8 num_samples],'single') - 0.5, rand([8 num_samples],'single') - 0.5);
     matlab_output = weights * samples;
     
-    funcs = {@c_matrix_multiply @c_avx_split_matrix_multiply @c_avx_interleave_matrix_multiply @c_opensal_matrix_multiply};
+    funcs = {@c_matrix_multiply ...
+             @c_avx_split_matrix_multiply @c_avx_interleave_matrix_multiply  ...
+             @c_opensal_matrix_multiply ...
+             @c_avx_fixed_dimension_matrix_multiply};
     for index=1:length(funcs)
         matrix_func = funcs{index};
         f = functions(matrix_func);

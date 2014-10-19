@@ -4,22 +4,28 @@
 
 #include <sal.h>
 
-static SAL_cf32* copy_mx_to_C_matrix (const mxArray *const mx_matrix)
+#include "avx_fixed_dimension_matrix_multiply.h"
+
+static SAL_cf32* copy_mx_to_C_matrix (const mxArray *const mx_matrix, SAL_i32 *const tcols)
 {
     const float *real_in = mxGetData (mx_matrix);
     const float *imag_in = mxGetImagData (mx_matrix);
     const mwSize *const matrix_dimensions = mxGetDimensions (mx_matrix);
     const mwSize num_rows = matrix_dimensions[0];
     const mwSize num_cols = matrix_dimensions[1];
-    SAL_cf32 *const C_matrix = mxCalloc (num_rows * num_cols, sizeof(SAL_cf32));
+    SAL_cf32 *C_matrix;
     mwSize row, col;
     mwSize row_major_index, col_major_index;
+    
+    /* Align each C matrix column to start on an AVX aligned boundrary */
+    *tcols = (num_cols + 3) & ~3;
+    C_matrix = mxCalloc (num_rows * *tcols, sizeof(SAL_cf32));
     
     for (row = 0; row < num_rows; row++)
     {
         for (col = 0; col < num_cols; col++)
         {
-            row_major_index = (row * num_cols) + col;
+            row_major_index = (row * *tcols) + col;
             col_major_index = (col * num_rows) + row;
             C_matrix[row_major_index].real = real_in[col_major_index];
             C_matrix[row_major_index].imag = imag_in[col_major_index];
@@ -29,7 +35,8 @@ static SAL_cf32* copy_mx_to_C_matrix (const mxArray *const mx_matrix)
     return C_matrix;
 }
 
-static void copy_C_to_mx_matrix (const SAL_cf32 *const C_matrix, mxArray *const mx_matrix)
+static void copy_C_to_mx_matrix (const SAL_cf32 *const C_matrix, const SAL_i32 tcols,
+                                 mxArray *const mx_matrix)
 {
     float *real_out = mxGetData (mx_matrix);
     float *imag_out = mxGetImagData (mx_matrix);
@@ -43,7 +50,7 @@ static void copy_C_to_mx_matrix (const SAL_cf32 *const C_matrix, mxArray *const 
     {
         for (col = 0; col < num_cols; col++)
         {
-            row_major_index = (row * num_cols) + col;
+            row_major_index = (row * tcols) + col;
             col_major_index = (col * num_rows) + row;
             real_out[col_major_index] = C_matrix[row_major_index].real;
             imag_out[col_major_index] = C_matrix[row_major_index].imag;
@@ -62,15 +69,16 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     SAL_cf32 *left_matrix;
     SAL_cf32 *right_matrix;
     SAL_cf32 *output_matrix;
+    SAL_i32 left_matrix_tcols, right_matrix_tcols, output_matrix_tcols;
     SAL_i32 rc;
 
     if (nlhs != 1)
     {
-        mexErrMsgIdAndTxt ("c_opensal_matrix_multiply:a", "Incorrect number of outputs");
+        mexErrMsgIdAndTxt ("c_avx_fixed_dimension_matrix_multiply:a", "Incorrect number of outputs");
     }
     if (nrhs != 2)
     {
-        mexErrMsgIdAndTxt ("c_opensal_matrix_multiply:b", "Incorrect number of inputs");
+        mexErrMsgIdAndTxt ("c_avx_fixed_dimension_matrix_multiply:b", "Incorrect number of inputs");
     }
     
     if (!mxIsComplex (left_matrix_in) || !mxIsSingle (left_matrix_in) ||
@@ -78,7 +86,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         (mxGetNumberOfDimensions (left_matrix_in) != 2) ||
         (mxGetNumberOfDimensions (right_matrix_in) != 2))
     {
-        mexErrMsgIdAndTxt ("c_opensal_matrix_multiply:c", "Inputs are not complex single 2D arrays");
+        mexErrMsgIdAndTxt ("c_avx_fixed_dimension_matrix_multiply:c", "Inputs are not complex single 2D arrays");
     }
     
     left_matrix_dimensions = mxGetDimensions (left_matrix_in);
@@ -88,25 +96,29 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     nc_c = right_matrix_dimensions[1];
     if (dot_product_length != right_matrix_dimensions[0])
     {
-        mexErrMsgIdAndTxt ("c_matrix_multiply:d", "Inconsistent number of weights");
+        mexErrMsgIdAndTxt ("c_avx_fixed_dimension_matrix_multiply:d", "Inconsistent number of weights");
     }
 
-    left_matrix = copy_mx_to_C_matrix (left_matrix_in);
-    right_matrix = copy_mx_to_C_matrix (right_matrix_in);
-    output_matrix = mxCalloc (nr_c * nc_c, sizeof(SAL_cf32));
+    left_matrix = copy_mx_to_C_matrix (left_matrix_in, &left_matrix_tcols);
+    right_matrix = copy_mx_to_C_matrix (right_matrix_in, &right_matrix_tcols);
+    output_matrix_tcols = (nc_c + 3) & ~3;
+    output_matrix = mxCalloc (nr_c * output_matrix_tcols, sizeof(SAL_cf32));
     
-    rc = cmat_mulx (left_matrix, dot_product_length,
-                    right_matrix, nc_c,
-                    output_matrix, nc_c,
-                    nr_c, nc_c, dot_product_length, 0, 0);
-    if (rc != SAL_SUCCESS)
+    if ((nr_c == 5) && (dot_product_length == 8))
     {
-        mexErrMsgIdAndTxt ("c_opensal_matrix_multiply:c", "cmat_mulx failed with rc=%u", rc);
+        rc = cmat_mulx_avx_nr_c_5_dot_product_length_8 (left_matrix, left_matrix_tcols,
+                                                        right_matrix, right_matrix_tcols,
+                                                        output_matrix, output_matrix_tcols,
+                                                        nc_c);
+        if (rc != SAL_SUCCESS)
+        {
+            mexErrMsgIdAndTxt ("c_avx_fixed_dimension_matrix_multiply:c", "cmat_mulx failed with rc=%u", rc);
+        }
     }
 
     mx_output_matrix = mxCreateNumericMatrix (nr_c, nc_c, mxSINGLE_CLASS, mxCOMPLEX);
     plhs[0] = mx_output_matrix;
-    copy_C_to_mx_matrix (output_matrix, mx_output_matrix);
+    copy_C_to_mx_matrix (output_matrix, output_matrix_tcols, mx_output_matrix);
     
     mxFree (left_matrix);
     mxFree (right_matrix);

@@ -2,124 +2,127 @@
 #include <mex.h>
 #include <matrix.h>
 
+#include <sal.h>
+
 #include "avx_matrix_multiply_library.h"
+
+static void copy_mx_to_C_matrix (const mxArray *const mx_matrix, SAL_i32 *const tcols, SAL_zf32 *const C_matrix)
+{
+    const float *real_in = mxGetData (mx_matrix);
+    const float *imag_in = mxGetImagData (mx_matrix);
+    const mwSize *const matrix_dimensions = mxGetDimensions (mx_matrix);
+    const mwSize num_rows = matrix_dimensions[0];
+    const mwSize num_cols = matrix_dimensions[1];
+    mwSize row, col;
+    mwSize row_major_index, col_major_index;
+    
+    /* Align each C matrix column to start on an AVX aligned boundrary */
+    *tcols = (num_cols + 7) & ~7;
+    C_matrix->realp = mxCalloc (num_rows * *tcols, sizeof(float));
+    C_matrix->imagp = mxCalloc (num_rows * *tcols, sizeof(float));
+    
+    for (row = 0; row < num_rows; row++)
+    {
+        for (col = 0; col < num_cols; col++)
+        {
+            row_major_index = (row * *tcols) + col;
+            col_major_index = (col * num_rows) + row;
+            C_matrix->realp[row_major_index] = real_in[col_major_index];
+            C_matrix->imagp[row_major_index] = imag_in[col_major_index];
+        }
+    }
+}
+
+static void copy_C_to_mx_matrix (const SAL_zf32 *const C_matrix, const SAL_i32 tcols,
+                                 mxArray *const mx_matrix)
+{
+    float *real_out = mxGetData (mx_matrix);
+    float *imag_out = mxGetImagData (mx_matrix);
+    const mwSize *const matrix_dimensions = mxGetDimensions (mx_matrix);
+    const mwSize num_rows = matrix_dimensions[0];
+    const mwSize num_cols = matrix_dimensions[1];
+    mwSize row, col;
+    mwSize row_major_index, col_major_index;
+    
+    for (row = 0; row < num_rows; row++)
+    {
+        for (col = 0; col < num_cols; col++)
+        {
+            row_major_index = (row * tcols) + col;
+            col_major_index = (col * num_rows) + row;
+            real_out[col_major_index] = C_matrix->realp[row_major_index];
+            imag_out[col_major_index] = C_matrix->imagp[row_major_index];
+        }
+    }
+}
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
-    const mxArray *const weights_in = prhs[0];
-    const mxArray *const samples_in = prhs[1];
-    const mwSize *weights_dimensions;
-    const mwSize *samples_dimensions;
-    mwSize num_samples, num_weights, num_sets;
-    mwSize set, sample, weight;
-    mwSize weight_index, sample_index, output_index;
-    mxArray *output_matrix;
-    const float *weights_real, *weights_imag;
-    const float *samples_real, *samples_imag;
-    float *output_real, *output_imag;
-    packed_8_split *weights;
-    split *samples;
-    split *outputs;
- 
+    const mxArray *const left_matrix_in = prhs[0];
+    const mxArray *const right_matrix_in = prhs[1];
+    const mwSize *left_matrix_dimensions;
+    const mwSize *right_matrix_dimensions;
+    SAL_i32 nr_c, nc_c, dot_product_length;
+    mxArray *mx_output_matrix;
+    SAL_zf32 left_matrix;
+    SAL_zf32 right_matrix;
+    SAL_zf32 output_matrix;
+    SAL_i32 left_matrix_tcols, right_matrix_tcols, output_matrix_tcols;
+    SAL_i32 rc;
+
     if (nlhs != 1)
     {
-        mexErrMsgIdAndTxt ("c_matrix_multiply:a", "Incorrect number of outputs");
+        mexErrMsgIdAndTxt ("c_avx_split_matrix_multiply:a", "Incorrect number of outputs");
     }
     if (nrhs != 2)
     {
-        mexErrMsgIdAndTxt ("c_matrix_multiply:b", "Incorrect number of inputs");
+        mexErrMsgIdAndTxt ("c_avx_split_matrix_multiply:b", "Incorrect number of inputs");
     }
     
-    if (!mxIsComplex (weights_in) || !mxIsSingle (weights_in) ||
-        !mxIsComplex (samples_in) || !mxIsSingle (samples_in) ||
-        (mxGetNumberOfDimensions (weights_in) != 2) ||
-        (mxGetNumberOfDimensions (samples_in) != 2))
+    if (!mxIsComplex (left_matrix_in) || !mxIsSingle (left_matrix_in) ||
+        !mxIsComplex (right_matrix_in) || !mxIsSingle (right_matrix_in) ||
+        (mxGetNumberOfDimensions (left_matrix_in) != 2) ||
+        (mxGetNumberOfDimensions (right_matrix_in) != 2))
     {
-        mexErrMsgIdAndTxt ("c_matrix_multiply:c", "Inputs are not complex single 2D arrays");
+        mexErrMsgIdAndTxt ("c_avx_split_matrix_multiply:c", "Inputs are not complex single 2D arrays");
     }
     
-    weights_dimensions = mxGetDimensions (weights_in);
-    samples_dimensions = mxGetDimensions (samples_in);
-    num_sets = weights_dimensions[0];
-    num_weights = weights_dimensions[1];
-    num_samples = samples_dimensions[1];
-    if (num_weights != samples_dimensions[0])
+    left_matrix_dimensions = mxGetDimensions (left_matrix_in);
+    right_matrix_dimensions = mxGetDimensions (right_matrix_in);
+    nr_c = left_matrix_dimensions[0];
+    dot_product_length = left_matrix_dimensions[1];
+    nc_c = right_matrix_dimensions[1];
+    if (dot_product_length != right_matrix_dimensions[0])
     {
-        mexErrMsgIdAndTxt ("c_matrix_multiply:d", "Inconsistent number of weights");
+        mexErrMsgIdAndTxt ("c_avx_split_matrix_multiply:d", "Inconsistent number of weights");
     }
+
+    copy_mx_to_C_matrix (left_matrix_in, &left_matrix_tcols, &left_matrix);
+    copy_mx_to_C_matrix (right_matrix_in, &right_matrix_tcols, &right_matrix);
+    output_matrix_tcols = (nc_c + 7) & ~7;
+    output_matrix.realp = mxCalloc (nr_c * output_matrix_tcols, sizeof(float));
+    output_matrix.imagp = mxCalloc (nr_c * output_matrix_tcols, sizeof(float));
     
-    weights = mxCalloc (num_sets, sizeof (packed_8_split));
-    weights_real = mxGetData (weights_in);
-    weights_imag = mxGetImagData (weights_in);
-    for (set = 0; set < num_sets; set++)
+    if (dot_product_length == 8)
     {
-        weights[set].real = mxCalloc (num_sets, sizeof (packed_8));
-        weights[set].imag = mxCalloc (num_sets, sizeof (packed_8));
-        for (weight = 0; weight < num_weights; weight++)
+        rc = zmat_mulx_avx_dot_product_length_8 (&left_matrix, left_matrix_tcols,
+                                                 &right_matrix, right_matrix_tcols,
+                                                 &output_matrix, nr_c, output_matrix_tcols,
+                                                 nc_c);
+        if (rc != SAL_SUCCESS)
         {
-            weight_index = set + (weight * num_sets);
-            weights[set].real->data[weight] = weights_real[weight_index];
-            weights[set].imag->data[weight] = weights_imag[weight_index];
+            mexErrMsgIdAndTxt ("c_avx_split_matrix_multiply:e", "zmat_mulx failed with rc=%u", rc);
         }
     }
 
-    samples = mxCalloc (num_weights, sizeof (split));
-    samples_real = mxGetData (samples_in);
-    samples_imag = mxGetImagData (samples_in);
-    for (weight = 0; weight < num_weights; weight++)
-    {
-        samples[weight].real = mxCalloc (num_samples + num_weights, sizeof(float));
-        samples[weight].imag = mxCalloc (num_samples + num_weights, sizeof(float));
-        for (sample = 0; sample < num_samples; sample++)
-        {
-            sample_index = weight + (sample * num_weights);
-            samples[weight].real[sample] = samples_real[sample_index];
-            samples[weight].imag[sample] = samples_imag[sample_index];
-        }
-    }
+    mx_output_matrix = mxCreateNumericMatrix (nr_c, nc_c, mxSINGLE_CLASS, mxCOMPLEX);
+    plhs[0] = mx_output_matrix;
+    copy_C_to_mx_matrix (&output_matrix, output_matrix_tcols, mx_output_matrix);
     
-    outputs = mxCalloc (num_sets, sizeof (split));
-    for (set = 0; set < num_sets; set++)
-    {
-        outputs[set].real = mxCalloc (num_samples + num_weights, sizeof(float));
-        outputs[set].imag = mxCalloc (num_samples + num_weights, sizeof(float));
-    }
-
-    packed_8_split_matrix_multiply (weights, samples, outputs, num_samples, num_sets);
-
-    output_matrix = mxCreateNumericMatrix (num_sets, num_samples, mxSINGLE_CLASS, mxCOMPLEX);
-    plhs[0] = output_matrix;
-
-    output_real = mxGetData (output_matrix);
-    output_imag = mxGetImagData (output_matrix);
-    for (set = 0; set < num_sets; set++)
-    {
-        for (sample = 0; sample < num_samples; sample++)
-        {
-            output_index = set + (sample * num_sets);
-            output_real[output_index] = outputs[set].real[sample];
-            output_imag[output_index] = outputs[set].imag[sample];
-        }
-    }
-
-    for (set = 0; set < num_sets; set++)
-    {
-        mxFree (outputs[set].real);
-        mxFree (outputs[set].imag);
-    }
-    mxFree (outputs);
-
-    for (weight = 0; weight < num_weights; weight++)
-    {
-        mxFree (samples[weight].real);
-        mxFree (samples[weight].imag);
-    }
-    mxFree (samples);
-
-    for (set = 0; set < num_sets; set++)
-    {
-        mxFree (weights[set].real);
-        mxFree (weights[set].imag);
-    }
-    mxFree (weights);
+    mxFree (left_matrix.realp);
+    mxFree (left_matrix.imagp);
+    mxFree (right_matrix.realp);
+    mxFree (right_matrix.imagp);
+    mxFree (output_matrix.realp);
+    mxFree (output_matrix.imagp);
 }

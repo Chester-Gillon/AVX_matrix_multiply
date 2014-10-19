@@ -2,113 +2,125 @@
 #include <mex.h>
 #include <matrix.h>
 
+#include <sal.h>
+
 #include "avx_matrix_multiply_library.h"
+
+static SAL_cf32* copy_mx_to_C_matrix (const mxArray *const mx_matrix, SAL_i32 *const tcols)
+{
+    const float *real_in = mxGetData (mx_matrix);
+    const float *imag_in = mxGetImagData (mx_matrix);
+    const mwSize *const matrix_dimensions = mxGetDimensions (mx_matrix);
+    const mwSize num_rows = matrix_dimensions[0];
+    const mwSize num_cols = matrix_dimensions[1];
+    SAL_cf32 *C_matrix;
+    mwSize row, col;
+    mwSize row_major_index, col_major_index;
+    
+    /* Align each C matrix column to start on an AVX aligned boundrary */
+    *tcols = (num_cols + 3) & ~3;
+    C_matrix = mxCalloc (num_rows * *tcols, sizeof(SAL_cf32));
+    
+    for (row = 0; row < num_rows; row++)
+    {
+        for (col = 0; col < num_cols; col++)
+        {
+            row_major_index = (row * *tcols) + col;
+            col_major_index = (col * num_rows) + row;
+            C_matrix[row_major_index].real = real_in[col_major_index];
+            C_matrix[row_major_index].imag = imag_in[col_major_index];
+        }
+    }
+    
+    return C_matrix;
+}
+
+static void copy_C_to_mx_matrix (const SAL_cf32 *const C_matrix, const SAL_i32 tcols,
+                                 mxArray *const mx_matrix)
+{
+    float *real_out = mxGetData (mx_matrix);
+    float *imag_out = mxGetImagData (mx_matrix);
+    const mwSize *const matrix_dimensions = mxGetDimensions (mx_matrix);
+    const mwSize num_rows = matrix_dimensions[0];
+    const mwSize num_cols = matrix_dimensions[1];
+    mwSize row, col;
+    mwSize row_major_index, col_major_index;
+    
+    for (row = 0; row < num_rows; row++)
+    {
+        for (col = 0; col < num_cols; col++)
+        {
+            row_major_index = (row * tcols) + col;
+            col_major_index = (col * num_rows) + row;
+            real_out[col_major_index] = C_matrix[row_major_index].real;
+            imag_out[col_major_index] = C_matrix[row_major_index].imag;
+        }
+    }
+}
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
-    const mxArray *const weights_in = prhs[0];
-    const mxArray *const samples_in = prhs[1];
-    const mwSize *weights_dimensions;
-    const mwSize *samples_dimensions;
-    mwSize num_samples, num_weights, num_sets;
-    mwSize set, sample, weight;
-    mwSize weight_index, sample_index, output_index;
-    mxArray *output_matrix;
-    const float *weights_real, *weights_imag;
-    const float *samples_real, *samples_imag;
-    float *output_real, *output_imag;
-    packed_8_interleave *weights;
-    complex **samples;
-    complex **outputs;
- 
+    const mxArray *const left_matrix_in = prhs[0];
+    const mxArray *const right_matrix_in = prhs[1];
+    const mwSize *left_matrix_dimensions;
+    const mwSize *right_matrix_dimensions;
+    SAL_i32 nr_c, nc_c, dot_product_length;
+    mxArray *mx_output_matrix;
+    SAL_cf32 *left_matrix;
+    SAL_cf32 *right_matrix;
+    SAL_cf32 *output_matrix;
+    SAL_i32 left_matrix_tcols, right_matrix_tcols, output_matrix_tcols;
+    SAL_i32 rc;
+
     if (nlhs != 1)
     {
-        mexErrMsgIdAndTxt ("c_matrix_multiply:a", "Incorrect number of outputs");
+        mexErrMsgIdAndTxt ("c_avx_interleave_matrix_multiply:a", "Incorrect number of outputs");
     }
     if (nrhs != 2)
     {
-        mexErrMsgIdAndTxt ("c_matrix_multiply:b", "Incorrect number of inputs");
+        mexErrMsgIdAndTxt ("c_avx_interleave_matrix_multiply:b", "Incorrect number of inputs");
     }
     
-    if (!mxIsComplex (weights_in) || !mxIsSingle (weights_in) ||
-        !mxIsComplex (samples_in) || !mxIsSingle (samples_in) ||
-        (mxGetNumberOfDimensions (weights_in) != 2) ||
-        (mxGetNumberOfDimensions (samples_in) != 2))
+    if (!mxIsComplex (left_matrix_in) || !mxIsSingle (left_matrix_in) ||
+        !mxIsComplex (right_matrix_in) || !mxIsSingle (right_matrix_in) ||
+        (mxGetNumberOfDimensions (left_matrix_in) != 2) ||
+        (mxGetNumberOfDimensions (right_matrix_in) != 2))
     {
-        mexErrMsgIdAndTxt ("c_matrix_multiply:c", "Inputs are not complex single 2D arrays");
+        mexErrMsgIdAndTxt ("c_avx_interleave_matrix_multiply:c", "Inputs are not complex single 2D arrays");
     }
     
-    weights_dimensions = mxGetDimensions (weights_in);
-    samples_dimensions = mxGetDimensions (samples_in);
-    num_sets = weights_dimensions[0];
-    num_weights = weights_dimensions[1];
-    num_samples = samples_dimensions[1];
-    if (num_weights != samples_dimensions[0])
+    left_matrix_dimensions = mxGetDimensions (left_matrix_in);
+    right_matrix_dimensions = mxGetDimensions (right_matrix_in);
+    nr_c = left_matrix_dimensions[0];
+    dot_product_length = left_matrix_dimensions[1];
+    nc_c = right_matrix_dimensions[1];
+    if (dot_product_length != right_matrix_dimensions[0])
     {
-        mexErrMsgIdAndTxt ("c_matrix_multiply:d", "Inconsistent number of weights");
+        mexErrMsgIdAndTxt ("c_avx_interleave_matrix_multiply:d", "Inconsistent number of weights");
     }
+
+    left_matrix = copy_mx_to_C_matrix (left_matrix_in, &left_matrix_tcols);
+    right_matrix = copy_mx_to_C_matrix (right_matrix_in, &right_matrix_tcols);
+    output_matrix_tcols = (nc_c + 3) & ~3;
+    output_matrix = mxCalloc (nr_c * output_matrix_tcols, sizeof(SAL_cf32));
     
-    weights = mxCalloc (num_sets, sizeof (packed_8_interleave));
-    weights_real = mxGetData (weights_in);
-    weights_imag = mxGetImagData (weights_in);
-    for (set = 0; set < num_sets; set++)
+    if (dot_product_length == 8)
     {
-        for (weight = 0; weight < num_weights; weight++)
+        rc = cmat_mulx_avx_dot_product_length_8 (left_matrix, left_matrix_tcols,
+                                                 right_matrix, right_matrix_tcols,
+                                                 output_matrix, nr_c, output_matrix_tcols,
+                                                 nc_c);
+        if (rc != SAL_SUCCESS)
         {
-            weight_index = set + (weight * num_sets);
-            weights[set].data[weight].real = weights_real[weight_index];
-            weights[set].data[weight].imag = weights_imag[weight_index];
+            mexErrMsgIdAndTxt ("c_avx_interleave_matrix_multiply:e", "cmat_mulx failed with rc=%u", rc);
         }
     }
 
-    samples = mxCalloc (num_weights, sizeof (complex *));
-    samples_real = mxGetData (samples_in);
-    samples_imag = mxGetImagData (samples_in);
-    for (weight = 0; weight < num_weights; weight++)
-    {
-        samples[weight] = mxCalloc (num_samples + num_weights, sizeof(complex));
-        for (sample = 0; sample < num_samples; sample++)
-        {
-            sample_index = weight + (sample * num_weights);
-            samples[weight][sample].real = samples_real[sample_index];
-            samples[weight][sample].imag = samples_imag[sample_index];
-        }
-    }
+    mx_output_matrix = mxCreateNumericMatrix (nr_c, nc_c, mxSINGLE_CLASS, mxCOMPLEX);
+    plhs[0] = mx_output_matrix;
+    copy_C_to_mx_matrix (output_matrix, output_matrix_tcols, mx_output_matrix);
     
-    outputs = mxCalloc (num_sets, sizeof (complex *));
-    for (set = 0; set < num_sets; set++)
-    {
-        outputs[set] = mxCalloc (num_samples + num_weights, sizeof(complex));
-    }
-
-    packed_8_interleave_matrix_multiply (weights, (const complex **) samples, outputs, num_samples, num_sets);
-
-    output_matrix = mxCreateNumericMatrix (num_sets, num_samples, mxSINGLE_CLASS, mxCOMPLEX);
-    plhs[0] = output_matrix;
-
-    output_real = mxGetData (output_matrix);
-    output_imag = mxGetImagData (output_matrix);
-    for (set = 0; set < num_sets; set++)
-    {
-        for (sample = 0; sample < num_samples; sample++)
-        {
-            output_index = set + (sample * num_sets);
-            output_real[output_index] = outputs[set][sample].real;
-            output_imag[output_index] = outputs[set][sample].imag;
-        }
-    }
-
-    for (set = 0; set < num_sets; set++)
-    {
-        mxFree (outputs[set]);
-    }
-    mxFree (outputs);
-
-    for (weight = 0; weight < num_weights; weight++)
-    {
-        mxFree (samples[weight]);
-    }
-    mxFree (samples);
-
-    mxFree (weights);
+    mxFree (left_matrix);
+    mxFree (right_matrix);
+    mxFree (output_matrix);
 }

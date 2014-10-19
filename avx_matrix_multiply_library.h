@@ -1,45 +1,17 @@
-typedef struct
-{
-    float data[8];
-} packed_8;
+SAL_i32 cmat_mulx_avx_dot_product_length_8 (SAL_cf32 *A, 	/* left input matrix */
+  	                                        SAL_i32 A_tcols, 	/* left input column stride */
+  	                                        SAL_cf32 *B, 	/* right input matrix */
+  	                                        SAL_i32 B_tcols, 	/* right input column stride */
+  	                                        SAL_cf32 *C, 	/* output matrix */
+  	                                        SAL_i32 nr_c, 	/* rows count in C */
+                                            SAL_i32 C_tcols, 	/* output column stride */
+  	                                        SAL_i32 nc_c); 	/* column count in C */
 
-typedef struct
-{
-    packed_8 *real;
-    packed_8 *imag;
-} packed_8_split;
-
-typedef struct
-{
-    float *real;
-    float *imag;
-} split;
-
-typedef struct
-{
-    float real;
-    float imag;
-} complex;
-
-typedef struct
-{
-    complex data[8];
-} packed_8_interleave;
-
-void packed_8_split_matrix_multiply (const packed_8_split *const weights,
-                                     const split *const samples,
-                                     const split *const outputs,
-                                     const size_t num_samples,
-                                     const size_t num_sets);
-
-void packed_8_interleave_matrix_multiply (const packed_8_interleave *const  weights,
-                                          const complex *const *const samples,
-                                          complex *const *const outputs,
-                                          const size_t num_samples,
-                                          const size_t num_sets);
-
-void packed_8_interleave_matrix_multiply_no_alias (const packed_8_interleave *const  weights,
-                                          const complex *const *const samples,
-                                          complex *const *const outputs,
-                                          const size_t num_samples,
-                                          const size_t num_sets);
+SAL_i32 zmat_mulx_avx_dot_product_length_8 (SAL_zf32 *A, 	/* left input matrix */
+  	                                        SAL_i32 A_tcols, 	/* left input column stride */
+  	                                        SAL_zf32 *B, 	/* right input matrix */
+  	                                        SAL_i32 B_tcols, 	/* right input column stride */
+  	                                        SAL_zf32 *C, 	/* output matrix */
+  	                                        SAL_i32 nr_c, 	/* rows count in C */
+                                            SAL_i32 C_tcols, 	/* output column stride */
+  	                                        SAL_i32 nc_c); 	/* column count in C */

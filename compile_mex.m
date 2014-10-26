@@ -10,6 +10,6 @@ function compile_mex
     mex ('COPTIMFLAGS=-O3', ['-I' opensal_include], 'CFLAGS="$CFLAGS -mavx -save-temps -Wall"', 'c_avx_split_matrix_multiply.c', 'avx_matrix_multiply_library.c')
     mex ('COPTIMFLAGS=-O3', ['-I' opensal_include], 'CFLAGS="$CFLAGS -mavx -save-temps -Wall"', 'c_avx_interleave_matrix_multiply.c', 'avx_matrix_multiply_library.c')
     mex ('COPTIMFLAGS=-O3', ['-I' opensal_include], ['-L' opensal_root], '-lsal64', 'CFLAGS="$CFLAGS -save-temps -Wall"', 'c_opensal_matrix_multiply.c')
-    mex ('COPTIMFLAGS=-O3', ['-I' opensal_include], 'CFLAGS="$CFLAGS -mavx -save-temps -Wall"', 'c_avx_fixed_dimension_matrix_multiply.c', 'avx_fixed_dimension_matrix_multiply.c')
+    mex ('COPTIMFLAGS=-O3', ['-I' opensal_include], 'CFLAGS="$CFLAGS -mavx -save-temps -Wall"', 'c_avx_fixed_dimension_matrix_multiply.c', 'cmat_mulx_fixed_dimension_matrix_multiplies.c')
 end
 

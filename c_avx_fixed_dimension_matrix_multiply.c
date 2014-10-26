@@ -99,11 +99,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         mexErrMsgIdAndTxt ("c_avx_fixed_dimension_matrix_multiply:d", "Inconsistent number of weights");
     }
 
-    left_matrix = copy_mx_to_C_matrix (left_matrix_in, &left_matrix_tcols);
-    right_matrix = copy_mx_to_C_matrix (right_matrix_in, &right_matrix_tcols);
-    output_matrix_tcols = (nc_c + 3) & ~3;
-    output_matrix = mxCalloc (nr_c * output_matrix_tcols, sizeof(SAL_cf32));
-
     if ((nr_c <= CMAT_MULX_FIXED_DIMENSION_MAX_NR_C) &&
         (dot_product_length <= CMAT_MULX_FIXED_DIMENSION_MAX_DOT_PRODUCT_LENGTH))
     {
@@ -112,22 +107,27 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     
     if (cmat_mulx_func != NULL)
     {
+        left_matrix = copy_mx_to_C_matrix (left_matrix_in, &left_matrix_tcols);
+        right_matrix = copy_mx_to_C_matrix (right_matrix_in, &right_matrix_tcols);
+        output_matrix_tcols = (nc_c + 3) & ~3;
+        output_matrix = mxCalloc (nr_c * output_matrix_tcols, sizeof(SAL_cf32));
+
         (*cmat_mulx_func) (left_matrix, left_matrix_tcols,
                            right_matrix, right_matrix_tcols,
                            output_matrix, output_matrix_tcols,
                            nc_c);
 
         mx_output_matrix = mxCreateNumericMatrix (nr_c, nc_c, mxSINGLE_CLASS, mxCOMPLEX);
-        plhs[0] = mx_output_matrix;
         copy_C_to_mx_matrix (output_matrix, output_matrix_tcols, mx_output_matrix);
+    
+        mxFree (left_matrix);
+        mxFree (right_matrix);
+        mxFree (output_matrix);
     }
     else
     {
         /* Empty output matrix indicates fixed dimensions not support */
         mx_output_matrix = mxCreateNumericMatrix (0, 0, mxSINGLE_CLASS, mxCOMPLEX);
     }
-    
-    mxFree (left_matrix);
-    mxFree (right_matrix);
-    mxFree (output_matrix);
+    plhs[0] = mx_output_matrix;
 }

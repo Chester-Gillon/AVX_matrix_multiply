@@ -1,3 +1,6 @@
+
+#define NR_C_MAX 20
+
 SAL_i32 cmat_mulx_avx_dot_product_length_8 (SAL_cf32 *A, 	/* left input matrix */
   	                                        SAL_i32 A_tcols, 	/* left input column stride */
   	                                        SAL_cf32 *B, 	/* right input matrix */

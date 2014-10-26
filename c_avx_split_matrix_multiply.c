@@ -96,15 +96,15 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     {
         mexErrMsgIdAndTxt ("c_avx_split_matrix_multiply:d", "Inconsistent number of weights");
     }
-
-    copy_mx_to_C_matrix (left_matrix_in, &left_matrix_tcols, &left_matrix);
-    copy_mx_to_C_matrix (right_matrix_in, &right_matrix_tcols, &right_matrix);
-    output_matrix_tcols = (nc_c + 7) & ~7;
-    output_matrix.realp = mxCalloc (nr_c * output_matrix_tcols, sizeof(float));
-    output_matrix.imagp = mxCalloc (nr_c * output_matrix_tcols, sizeof(float));
     
-    if (dot_product_length == 8)
+    if ((nr_c <= NR_C_MAX) && (dot_product_length == 8))
     {
+        copy_mx_to_C_matrix (left_matrix_in, &left_matrix_tcols, &left_matrix);
+        copy_mx_to_C_matrix (right_matrix_in, &right_matrix_tcols, &right_matrix);
+        output_matrix_tcols = (nc_c + 7) & ~7;
+        output_matrix.realp = mxCalloc (nr_c * output_matrix_tcols, sizeof(float));
+        output_matrix.imagp = mxCalloc (nr_c * output_matrix_tcols, sizeof(float));
+
         rc = zmat_mulx_avx_dot_product_length_8 (&left_matrix, left_matrix_tcols,
                                                  &right_matrix, right_matrix_tcols,
                                                  &output_matrix, nr_c, output_matrix_tcols,
@@ -113,16 +113,21 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         {
             mexErrMsgIdAndTxt ("c_avx_split_matrix_multiply:e", "zmat_mulx failed with rc=%u", rc);
         }
-    }
 
-    mx_output_matrix = mxCreateNumericMatrix (nr_c, nc_c, mxSINGLE_CLASS, mxCOMPLEX);
-    plhs[0] = mx_output_matrix;
-    copy_C_to_mx_matrix (&output_matrix, output_matrix_tcols, mx_output_matrix);
+        mx_output_matrix = mxCreateNumericMatrix (nr_c, nc_c, mxSINGLE_CLASS, mxCOMPLEX);
+        copy_C_to_mx_matrix (&output_matrix, output_matrix_tcols, mx_output_matrix);
     
-    mxFree (left_matrix.realp);
-    mxFree (left_matrix.imagp);
-    mxFree (right_matrix.realp);
-    mxFree (right_matrix.imagp);
-    mxFree (output_matrix.realp);
-    mxFree (output_matrix.imagp);
+        mxFree (left_matrix.realp);
+        mxFree (left_matrix.imagp);
+        mxFree (right_matrix.realp);
+        mxFree (right_matrix.imagp);
+        mxFree (output_matrix.realp);
+        mxFree (output_matrix.imagp);
+    }
+    else
+    {
+        /* Empty output to indicate the maxtrix dimension isn't support */
+        mx_output_matrix = mxCreateNumericMatrix (0, 0, mxSINGLE_CLASS, mxCOMPLEX);
+    }
+    plhs[0] = mx_output_matrix;
 }

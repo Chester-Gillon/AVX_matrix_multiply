@@ -12,8 +12,8 @@ function generate_avx_fixed_dimension_matrix_multiply
 '#define SWAP_REAL_IMAG_PERMUTE 0xB1'};
     write_lines_to_file (c_fid, lines);
     
-    for nr_c = 2:8 %2:32
-        for dot_product_length = 2:20 %2:32
+    for nr_c = 2:20
+        for dot_product_length = 2:20
             generate_function (c_fid, h_fid, nr_c, dot_product_length);
             generated_funcs(nr_c, dot_product_length) = true;
         end

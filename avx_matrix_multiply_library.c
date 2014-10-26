@@ -18,8 +18,6 @@
 
 #include "avx_matrix_multiply_library.h"
 
-#define NR_C_MAX 32
-
 #define SWAP_REAL_IMAG_PERMUTE 0xB1
 
 SAL_i32 zmat_mulx_avx_dot_product_length_8 (SAL_zf32 *A, 	/* left input matrix */

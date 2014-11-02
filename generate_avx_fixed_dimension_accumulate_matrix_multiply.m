@@ -12,7 +12,7 @@ function generate_avx_fixed_dimension_accumulate_matrix_multiply
 '#define SWAP_REAL_IMAG_PERMUTE 0xB1'};
     write_lines_to_file (c_fid, lines);
     
-    for nr_c = 3:3
+    for nr_c = 2:20
         for dot_product_length = 2:20
             generate_function (c_fid, h_fid, nr_c, dot_product_length);
             generated_funcs(nr_c, dot_product_length) = true;
@@ -137,138 +137,32 @@ function generate_function (c_fid, h_fid, nr_c, dot_product_length)
 '    for (c_c = 0; c_c < nc_c; c_c += 4)' ...
 '    {'};
     write_lines_to_file (c_fid, lines);
-    
-    % Write code to load one column of the right matrix into AVX vectors
-    %for row = 0:dot_product_length-1
-    %    fprintf (c_fid, '        right_r%u_r_i = _mm256_load_ps (&B[(%u * B_tcols) + c_c].real);\n', row, row);
-    %    fprintf (c_fid, '        right_r%u_i_r = _mm256_permute_ps (right_r%u_r_i, SWAP_REAL_IMAG_PERMUTE);\n', row, row);
-    %end
-    
+
+    % Write code to compute one output column.
+    % The right matrix is read one AVX vector at a time, and used to
+    % accumulate the output column.
     for right_row = 0:dot_product_length-1
         fprintf(c_fid, '        right_r_i = _mm256_load_ps (&B[(%u * B_tcols) + c_c].real);\n',right_row);
         fprintf(c_fid, '        right_i_r = _mm256_permute_ps (right_r_i, SWAP_REAL_IMAG_PERMUTE);\n');
         for output_row = 0:nr_c-1
+            output_row_padding = repmat(' ',[1 length(num2str(output_row))]);
             if right_row == 0
                 fprintf(c_fid, '        output_r%u = _mm256_addsub_ps (_mm256_mul_ps (right_r_i, left_r%u_c%u_r),\n',output_row,output_row,right_row);
-                fprintf(c_fid, '                                       _mm256_mul_ps (right_i_r, left_r%u_c%u_i));\n',output_row,right_row);
+                fprintf(c_fid, '                %s                     _mm256_mul_ps (right_i_r, left_r%u_c%u_i));\n',output_row_padding,output_row,right_row);
             elseif right_row < dot_product_length-1
                 fprintf(c_fid, '        output_r%u = _mm256_add_ps (output_r%u, _mm256_addsub_ps (_mm256_mul_ps (right_r_i, left_r%u_c%u_r),\n',output_row,output_row,output_row,right_row);
-                fprintf(c_fid, '                                                                  _mm256_mul_ps (right_i_r, left_r%u_c%u_i)));\n',output_row,right_row);
+                fprintf(c_fid, '                %s                          %s                    _mm256_mul_ps (right_i_r, left_r%u_c%u_i)));\n',output_row_padding,output_row_padding,output_row,right_row);
             else
                 fprintf(c_fid, '        _mm256_store_ps (&C[(%u * C_tcols) + c_c].real, _mm256_add_ps (output_r%u, _mm256_addsub_ps (_mm256_mul_ps (right_r_i, left_r%u_c%u_r),\n',output_row,output_row,output_row,right_row);
-                fprintf(c_fid, '                                                                                                     _mm256_mul_ps (right_i_r, left_r%u_c%u_i))));\n',output_row,right_row);
+                fprintf(c_fid, '                             %s                                                %s                    _mm256_mul_ps (right_i_r, left_r%u_c%u_i))));\n',output_row_padding,output_row_padding,output_row,right_row);
             end
         end
     end
-    
-%     for left_row = 0:nr_c-1
-%     
-%     % Write code to initialise the output column from one complex multiply
-%     for row = 0:dot_product_length-1
-%         lines = { ...
-% sprintf('        right_r_i = _mm256_load_ps (&B[(%u * B_tcols) + c_c].real);',row) ...
-% sprintf('        right_i_r = _mm256_permute_ps (right_r_i, SWAP_REAL_IMAG_PERMUTE);') ...
-% sprintf('        output_r%u = _mm256_addsub_ps (_mm256_mul_ps (right_r_i, left_r0_c%u_r),',row,row) ...
-% sprintf('                                       _mm256_mul_ps (right_i_r, left_r0_c%u_i));',row)};
-%         write_lines_to_file (c_fid, lines);
-%     end
-%     
-%     % Write code to accumulate the output column from one complex multiply
-%     for right_row = 1:dot_product_length-2
-%         lines = { ...
-% sprintf('        right_r_i = _mm256_load_ps (&B[(%u * B_tcols) + c_c].real);',right_row) ...
-% sprintf('        right_i_r = _mm256_permute_ps (right_r_i, SWAP_REAL_IMAG_PERMUTE);') ...
-% sprintf('        output_r%u = _mm256_add_ps (output_r%u, _mm256_addsub_ps (_mm256_mul_ps (right_r_i, left_r0_c%u_r),',right_row,right_row,right_row) ...
-% sprintf('                                                                  _mm256_mul_ps (right_i_r, left_r0_c%u_i)));',right_row)};
-%         write_lines_to_file (c_fid, lines);
-%     end
-%     
-%     % Write code to write the output column from one the final complex multiply
-%        right_row = dot_product_length-1;
-%        lines = { ...
-% sprintf('        right_r_i = _mm256_load_ps (&B[(%u * B_tcols) + c_c].real);',right_row) ...
-% sprintf('        right_i_r = _mm256_permute_ps (right_r_i, SWAP_REAL_IMAG_PERMUTE);') ...
-% sprintf('        _mm256_store_ps (&C[(%u * C_tcols) + c_c].real, _mm256_add_ps (output_r%u, _mm256_addsub_ps (_mm256_mul_ps (right_r_i, left_r0_c%u_r),',left_row,right_row,right_row) ...
-% sprintf('                                                        _mm256_mul_ps (right_i_r, left_r0_c%u_i)));',right_row)};
-%         write_lines_to_file (c_fid, lines);
-%     end
-    %for row = 0:nr_c-1
-    %    write_lines_to_file (c_fid, generate_dot_product_calc (row, dot_product_length));
-    %end
 
     % Complete C function
     fprintf (c_fid, '    }\n');
     fprintf (c_fid, '}\n');
     fprintf (c_fid, '\n');
-end
-
-function lines = generate_dot_product_calc (left_row, dot_product_length)
-    dot_product_indices = 0:dot_product_length-1;
-    indices = split_dot_product_indices (dot_product_indices);
-    lines = {
-'' ...
-sprintf('        _mm256_store_ps (&C[(%u * C_tcols) + c_c].real,', left_row)};
-    expression_depth = 0;
-    num_add_open_brackets = 0;
-    lines = generate_dot_product_lines (lines, indices, expression_depth, num_add_open_brackets, left_row);
-    
-    for line_index = 1:length(lines)
-        if ~isempty(lines{line_index}) && (lines{line_index}(end) == ')')
-            if line_index == length(lines)
-                lines{line_index} = [lines{line_index} ');'];
-            else
-                lines{line_index} = [lines{line_index} ','];
-            end
-        end
-    end
-end
-
-function indices = split_dot_product_indices (dot_product_indices)
-    if length (dot_product_indices) > 2
-        num_left = ceil (length (dot_product_indices) / 2);
-        left_dot_product_indices = dot_product_indices(1:num_left);
-        right_dot_product_indices = dot_product_indices(num_left+1:end);
-        indices = {split_dot_product_indices(left_dot_product_indices) ...
-                   split_dot_product_indices(right_dot_product_indices)};
-    elseif length (dot_product_indices) == 2
-        indices = {dot_product_indices(1) dot_product_indices(2)};
-    else
-        indices = {dot_product_indices(1)};
-    end
-end
-
-function lines = generate_dot_product_lines (lines, indices, expression_depth, num_add_open_brackets, left_row)
-    if ~iscell(indices) || (length(indices) == 2)
-        expression_depth = expression_depth + 1;
-    end
-    indent = (expression_depth + 2) * 4;
-    if iscell (indices)
-        opened_add = false;
-        if length(indices) == 2
-            line = [repmat(' ',[1 indent]) '_mm256_add_ps('];
-            lines = [lines line];
-            num_add_open_brackets = num_add_open_brackets + 1;
-            opened_add = true;
-        end
-        left_lines = generate_dot_product_lines({}, indices{1}, expression_depth, num_add_open_brackets, left_row);
-        for line_index = 1:length(left_lines)
-            lines = [lines left_lines{line_index}];
-        end
-        if length(indices) == 2
-            right_lines = generate_dot_product_lines({}, indices{2}, expression_depth, num_add_open_brackets, left_row);
-            for line_index = 1:length(right_lines)
-                lines = [lines right_lines{line_index}];
-            end
-        end
-        
-        if opened_add
-            lines{end} = [lines{end} ')'];
-        end
-    else
-        mul_prefix = [repmat(' ',[1 indent]) '_mm256_addsub_ps ('];
-        lines = [lines [mul_prefix sprintf('_mm256_mul_ps (right_r%u_r_i, left_r%u_c%u_r),', indices, left_row, indices)]];
-        lines = [lines [repmat(' ',[1 length(mul_prefix)]) sprintf('_mm256_mul_ps (right_r%u_i_r, left_r%u_c%u_i))', indices, left_row, indices)]];
-    end
 end
 
 function write_lines_to_file (fid, lines)

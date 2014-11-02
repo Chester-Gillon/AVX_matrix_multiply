@@ -7,25 +7,42 @@
 #include "avx_matrix_multiply_library.h"
 #include "matrix_utils.h"
 
+typedef struct
+{
+    SAL_i32 nr_c, nc_c, dot_product_length;
+    SAL_i32 left_matrix_tcols, right_matrix_tcols, output_matrix_tcols;
+    SAL_zf32 left_matrix;
+    SAL_zf32 right_matrix;
+    SAL_zf32 output_matrix;
+    SAL_i32 rc;
+} matrix_context;
+
+static void timed_c_matrix_multiply (void *arg)
+{
+    matrix_context *const context = (matrix_context *) arg;
+
+    context->rc = zmat_mulx_avx_dot_product_length_8 (&context->left_matrix, context->left_matrix_tcols,
+                                                      &context->right_matrix, context->right_matrix_tcols,
+                                                      &context->output_matrix, context->nr_c, context->output_matrix_tcols,
+                                                      context->nc_c);
+}
+
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
     const mxArray *const left_matrix_in = prhs[0];
     const mxArray *const right_matrix_in = prhs[1];
+    const mxArray *const num_timed_iterations_in = prhs[2];
     const mwSize *left_matrix_dimensions;
     const mwSize *right_matrix_dimensions;
-    SAL_i32 nr_c, nc_c, dot_product_length;
     mxArray *mx_output_matrix;
-    SAL_zf32 left_matrix;
-    SAL_zf32 right_matrix;
-    SAL_zf32 output_matrix;
-    SAL_i32 left_matrix_tcols, right_matrix_tcols, output_matrix_tcols;
-    SAL_i32 rc;
+    mxArray *timing_results;
+    matrix_context context;
 
-    if (nlhs != 1)
+    if (nlhs != 2)
     {
         mexErrMsgIdAndTxt ("c_avx_split_matrix_multiply:a", "Incorrect number of outputs");
     }
-    if (nrhs != 2)
+    if (nrhs != 3)
     {
         mexErrMsgIdAndTxt ("c_avx_split_matrix_multiply:b", "Incorrect number of inputs");
     }
@@ -40,45 +57,44 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     
     left_matrix_dimensions = mxGetDimensions (left_matrix_in);
     right_matrix_dimensions = mxGetDimensions (right_matrix_in);
-    nr_c = left_matrix_dimensions[0];
-    dot_product_length = left_matrix_dimensions[1];
-    nc_c = right_matrix_dimensions[1];
-    if (dot_product_length != right_matrix_dimensions[0])
+    context.nr_c = left_matrix_dimensions[0];
+    context.dot_product_length = left_matrix_dimensions[1];
+    context.nc_c = right_matrix_dimensions[1];
+    if (context.dot_product_length != right_matrix_dimensions[0])
     {
-        mexErrMsgIdAndTxt ("c_avx_split_matrix_multiply:d", "Inconsistent number of weights");
+        mexErrMsgIdAndTxt ("c_avx_split_matrix_multiply:d", "Inconsistent matrix dimensions");
     }
     
-    if ((nr_c <= NR_C_MAX) && (dot_product_length == 8))
+    if ((context.nr_c <= NR_C_MAX) && (context.dot_product_length == 8))
     {
-        copy_mx_to_zf32_matrix (left_matrix_in, &left_matrix_tcols, &left_matrix);
-        copy_mx_to_zf32_matrix (right_matrix_in, &right_matrix_tcols, &right_matrix);
-        output_matrix_tcols = (nc_c + 7) & ~7;
-        output_matrix.realp = mxCalloc (nr_c * output_matrix_tcols, sizeof(float));
-        output_matrix.imagp = mxCalloc (nr_c * output_matrix_tcols, sizeof(float));
+        copy_mx_to_zf32_matrix (left_matrix_in, &context.left_matrix_tcols, &context.left_matrix);
+        copy_mx_to_zf32_matrix (right_matrix_in, &context.right_matrix_tcols, &context.right_matrix);
+        context.output_matrix_tcols = (context.nc_c + 7) & ~7;
+        context.output_matrix.realp = mxCalloc (context.nr_c * context.output_matrix_tcols, sizeof(float));
+        context.output_matrix.imagp = mxCalloc (context.nr_c * context.output_matrix_tcols, sizeof(float));
 
-        rc = zmat_mulx_avx_dot_product_length_8 (&left_matrix, left_matrix_tcols,
-                                                 &right_matrix, right_matrix_tcols,
-                                                 &output_matrix, nr_c, output_matrix_tcols,
-                                                 nc_c);
-        if (rc != SAL_SUCCESS)
+        timing_results = time_matrix_multiply (timed_c_matrix_multiply, &context, mxGetScalar (num_timed_iterations_in));
+        if (context.rc != SAL_SUCCESS)
         {
-            mexErrMsgIdAndTxt ("c_avx_split_matrix_multiply:e", "zmat_mulx failed with rc=%u", rc);
+            mexErrMsgIdAndTxt ("c_avx_split_matrix_multiply:e", "zmat_mulx failed with rc=%u", context.rc);
         }
 
-        mx_output_matrix = mxCreateNumericMatrix (nr_c, nc_c, mxSINGLE_CLASS, mxCOMPLEX);
-        copy_zf32_to_mx_matrix (&output_matrix, output_matrix_tcols, mx_output_matrix);
+        mx_output_matrix = mxCreateNumericMatrix (context.nr_c, context.nc_c, mxSINGLE_CLASS, mxCOMPLEX);
+        copy_zf32_to_mx_matrix (&context.output_matrix, context.output_matrix_tcols, mx_output_matrix);
     
-        mxFree (left_matrix.realp);
-        mxFree (left_matrix.imagp);
-        mxFree (right_matrix.realp);
-        mxFree (right_matrix.imagp);
-        mxFree (output_matrix.realp);
-        mxFree (output_matrix.imagp);
+        mxFree (context.left_matrix.realp);
+        mxFree (context.left_matrix.imagp);
+        mxFree (context.right_matrix.realp);
+        mxFree (context.right_matrix.imagp);
+        mxFree (context.output_matrix.realp);
+        mxFree (context.output_matrix.imagp);
     }
     else
     {
-        /* Empty output to indicate the maxtrix dimension isn't support */
+        /* Empty output to indicate the matrix dimension isn't support */
         mx_output_matrix = mxCreateNumericMatrix (0, 0, mxSINGLE_CLASS, mxCOMPLEX);
+        timing_results = mxCreateStructMatrix (0, 0, 0, NULL);
     }
     plhs[0] = mx_output_matrix;
+    plhs[1] = timing_results;
 }

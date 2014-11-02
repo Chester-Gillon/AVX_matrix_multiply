@@ -7,25 +7,42 @@
 #include "cmat_mulx_fixed_dimension_accumulate_matrix_multiplies.h"
 #include "matrix_utils.h"
 
-void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
+typedef struct
 {
-    const mxArray *const left_matrix_in = prhs[0];
-    const mxArray *const right_matrix_in = prhs[1];
-    const mwSize *left_matrix_dimensions;
-    const mwSize *right_matrix_dimensions;
     SAL_i32 nr_c, nc_c, dot_product_length;
-    mxArray *mx_output_matrix;
     SAL_cf32 *left_matrix;
     SAL_cf32 *right_matrix;
     SAL_cf32 *output_matrix;
     SAL_i32 left_matrix_tcols, right_matrix_tcols, output_matrix_tcols;
-    cmat_mulx_fixed_dimension_accumulate_func cmat_mulx_func = NULL;
+    cmat_mulx_fixed_dimension_accumulate_func cmat_mulx_func;
+} matrix_context;
 
-    if (nlhs != 1)
+static void timed_c_matrix_multiply (void *arg)
+{
+    matrix_context *const context = (matrix_context *) arg;
+
+    (*context->cmat_mulx_func) (context->left_matrix, context->left_matrix_tcols,
+                                context->right_matrix, context->right_matrix_tcols,
+                                context->output_matrix, context->output_matrix_tcols,
+                                context->nc_c);
+}
+
+void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
+{
+    const mxArray *const left_matrix_in = prhs[0];
+    const mxArray *const right_matrix_in = prhs[1];
+    const mxArray *const num_timed_iterations_in = prhs[2];
+    const mwSize *left_matrix_dimensions;
+    const mwSize *right_matrix_dimensions;
+    mxArray *mx_output_matrix;
+    mxArray *timing_results;
+    matrix_context context;
+
+    if (nlhs != 2)
     {
         mexErrMsgIdAndTxt ("c_avx_fixed_dimension_accumulate_matrix_multiply:a", "Incorrect number of outputs");
     }
-    if (nrhs != 2)
+    if (nrhs != 3)
     {
         mexErrMsgIdAndTxt ("c_avx_fixed_dimension_accumulate_matrix_multiply:b", "Incorrect number of inputs");
     }
@@ -40,43 +57,43 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     
     left_matrix_dimensions = mxGetDimensions (left_matrix_in);
     right_matrix_dimensions = mxGetDimensions (right_matrix_in);
-    nr_c = left_matrix_dimensions[0];
-    dot_product_length = left_matrix_dimensions[1];
-    nc_c = right_matrix_dimensions[1];
-    if (dot_product_length != right_matrix_dimensions[0])
+    context.nr_c = left_matrix_dimensions[0];
+    context.dot_product_length = left_matrix_dimensions[1];
+    context.nc_c = right_matrix_dimensions[1];
+    if (context.dot_product_length != right_matrix_dimensions[0])
     {
-        mexErrMsgIdAndTxt ("c_avx_fixed_dimension_accumulate_matrix_multiply:d", "Inconsistent number of weights");
+        mexErrMsgIdAndTxt ("c_avx_fixed_dimension_accumulate_matrix_multiply:d", "Inconsistent matrix dimensions");
     }
 
-    if ((nr_c <= CMAT_MULX_FIXED_DIMENSION_ACCUMULATE_MAX_NR_C) &&
-        (dot_product_length <= CMAT_MULX_FIXED_DIMENSION_ACCUMULATE_MAX_DOT_PRODUCT_LENGTH))
+    context.cmat_mulx_func = NULL;
+    if ((context.nr_c <= CMAT_MULX_FIXED_DIMENSION_ACCUMULATE_MAX_NR_C) &&
+        (context.dot_product_length <= CMAT_MULX_FIXED_DIMENSION_ACCUMULATE_MAX_DOT_PRODUCT_LENGTH))
     {
-        cmat_mulx_func = cmat_mulx_fixed_dimension_accumulate_functions[nr_c][dot_product_length];
+        context.cmat_mulx_func = cmat_mulx_fixed_dimension_accumulate_functions[context.nr_c][context.dot_product_length];
     }
     
-    if (cmat_mulx_func != NULL)
+    if (context.cmat_mulx_func != NULL)
     {
-        left_matrix = copy_mx_to_cf32_matrix (left_matrix_in, &left_matrix_tcols);
-        right_matrix = copy_mx_to_cf32_matrix (right_matrix_in, &right_matrix_tcols);
-        output_matrix_tcols = (nc_c + 3) & ~3;
-        output_matrix = mxCalloc (nr_c * output_matrix_tcols, sizeof(SAL_cf32));
+        context.left_matrix = copy_mx_to_cf32_matrix (left_matrix_in, &context.left_matrix_tcols);
+        context.right_matrix = copy_mx_to_cf32_matrix (right_matrix_in, &context.right_matrix_tcols);
+        context.output_matrix_tcols = (context.nc_c + 3) & ~3;
+        context.output_matrix = mxCalloc (context.nr_c * context.output_matrix_tcols, sizeof(SAL_cf32));
 
-        (*cmat_mulx_func) (left_matrix, left_matrix_tcols,
-                           right_matrix, right_matrix_tcols,
-                           output_matrix, output_matrix_tcols,
-                           nc_c);
+        timing_results = time_matrix_multiply (timed_c_matrix_multiply, &context, mxGetScalar (num_timed_iterations_in));
 
-        mx_output_matrix = mxCreateNumericMatrix (nr_c, nc_c, mxSINGLE_CLASS, mxCOMPLEX);
-        copy_cf32_to_mx_matrix (output_matrix, output_matrix_tcols, mx_output_matrix);
+        mx_output_matrix = mxCreateNumericMatrix (context.nr_c, context.nc_c, mxSINGLE_CLASS, mxCOMPLEX);
+        copy_cf32_to_mx_matrix (context.output_matrix, context.output_matrix_tcols, mx_output_matrix);
     
-        mxFree (left_matrix);
-        mxFree (right_matrix);
-        mxFree (output_matrix);
+        mxFree (context.left_matrix);
+        mxFree (context.right_matrix);
+        mxFree (context.output_matrix);
     }
     else
     {
         /* Empty output matrix indicates fixed dimensions not support */
         mx_output_matrix = mxCreateNumericMatrix (0, 0, mxSINGLE_CLASS, mxCOMPLEX);
+        timing_results = mxCreateStructMatrix (0, 0, 0, NULL);
     }
     plhs[0] = mx_output_matrix;
+    plhs[1] = timing_results;
 }

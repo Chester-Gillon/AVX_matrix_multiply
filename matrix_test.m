@@ -4,6 +4,7 @@ function matrix_test
 rng('default');
 csv_file = fopen ('errors.csv','w');
 fprintf (csv_file, 'Function,nr_c,dot_product_length,Num Samples,Max ABS difference\n');
+num_timed_iterations = 2;
 for nr_c = 2:20
     for dot_product_length = 2:20
         num_samples = 5;
@@ -22,7 +23,7 @@ for nr_c = 2:20
                 f = functions(matrix_func);
                 fprintf ('Calling %s with nr_c=%u dot_product_length=%u num_samples=%d\n', ...
                     f.function, nr_c, dot_product_length, num_samples);
-                c_output = matrix_func(weights, samples);
+                [c_output, timing] = matrix_func(weights, samples, num_timed_iterations);
                 if ~isempty (c_output)
                     differences = c_output - matlab_output;
                     [differences_rows, differences_row_indices] = max(abs(differences));

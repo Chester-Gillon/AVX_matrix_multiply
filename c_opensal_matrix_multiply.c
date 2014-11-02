@@ -6,25 +6,42 @@
 
 #include "matrix_utils.h"
 
-void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
+typedef struct
 {
-    const mxArray *const left_matrix_in = prhs[0];
-    const mxArray *const right_matrix_in = prhs[1];
-    const mwSize *left_matrix_dimensions;
-    const mwSize *right_matrix_dimensions;
     SAL_i32 nr_c, nc_c, dot_product_length;
-    mxArray *mx_output_matrix;
     SAL_cf32 *left_matrix;
     SAL_cf32 *right_matrix;
     SAL_cf32 *output_matrix;
     SAL_i32 rc;
     SAL_i32 left_matrix_tcols, right_matrix_tcols;
+} matrix_context;
 
-    if (nlhs != 1)
+static void timed_c_matrix_multiply (void *arg)
+{
+    matrix_context *const context = (matrix_context *) arg;
+
+    context->rc = cmat_mulx (context->left_matrix, context->left_matrix_tcols,
+                             context->right_matrix, context->right_matrix_tcols,
+                             context->output_matrix, context->nc_c,
+                             context->nr_c, context->nc_c, context->dot_product_length, 0, 0);
+}
+
+void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
+{
+    const mxArray *const left_matrix_in = prhs[0];
+    const mxArray *const right_matrix_in = prhs[1];
+    const mxArray *const num_timed_iterations_in = prhs[2];
+    const mwSize *left_matrix_dimensions;
+    const mwSize *right_matrix_dimensions;
+    mxArray *mx_output_matrix;
+    mxArray *timing_results;
+    matrix_context context;
+
+    if (nlhs != 2)
     {
         mexErrMsgIdAndTxt ("c_opensal_matrix_multiply:a", "Incorrect number of outputs");
     }
-    if (nrhs != 2)
+    if (nrhs != 3)
     {
         mexErrMsgIdAndTxt ("c_opensal_matrix_multiply:b", "Incorrect number of inputs");
     }
@@ -39,32 +56,30 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     
     left_matrix_dimensions = mxGetDimensions (left_matrix_in);
     right_matrix_dimensions = mxGetDimensions (right_matrix_in);
-    nr_c = left_matrix_dimensions[0];
-    dot_product_length = left_matrix_dimensions[1];
-    nc_c = right_matrix_dimensions[1];
-    if (dot_product_length != right_matrix_dimensions[0])
+    context.nr_c = left_matrix_dimensions[0];
+    context.dot_product_length = left_matrix_dimensions[1];
+    context.nc_c = right_matrix_dimensions[1];
+    if (context.dot_product_length != right_matrix_dimensions[0])
     {
-        mexErrMsgIdAndTxt ("c_matrix_multiply:d", "Inconsistent number of weights");
+        mexErrMsgIdAndTxt ("c_matrix_multiply:d", "Inconsistent matrix dimensions");
     }
 
-    left_matrix = copy_mx_to_cf32_matrix (left_matrix_in, &left_matrix_tcols);
-    right_matrix = copy_mx_to_cf32_matrix (right_matrix_in, &right_matrix_tcols);
-    output_matrix = mxCalloc (nr_c * nc_c, sizeof(SAL_cf32));
+    context.left_matrix = copy_mx_to_cf32_matrix (left_matrix_in, &context.left_matrix_tcols);
+    context.right_matrix = copy_mx_to_cf32_matrix (right_matrix_in, &context.right_matrix_tcols);
+    context.output_matrix = mxCalloc (context.nr_c * context.nc_c, sizeof(SAL_cf32));
     
-    rc = cmat_mulx (left_matrix, left_matrix_tcols,
-                    right_matrix, right_matrix_tcols,
-                    output_matrix, nc_c,
-                    nr_c, nc_c, dot_product_length, 0, 0);
-    if (rc != SAL_SUCCESS)
+    timing_results = time_matrix_multiply (timed_c_matrix_multiply, &context, mxGetScalar (num_timed_iterations_in));
+    if (context.rc != SAL_SUCCESS)
     {
-        mexErrMsgIdAndTxt ("c_opensal_matrix_multiply:c", "cmat_mulx failed with rc=%u", rc);
+        mexErrMsgIdAndTxt ("c_opensal_matrix_multiply:c", "cmat_mulx failed with rc=%u", context.rc);
     }
 
-    mx_output_matrix = mxCreateNumericMatrix (nr_c, nc_c, mxSINGLE_CLASS, mxCOMPLEX);
+    mx_output_matrix = mxCreateNumericMatrix (context.nr_c, context.nc_c, mxSINGLE_CLASS, mxCOMPLEX);
     plhs[0] = mx_output_matrix;
-    copy_cf32_to_mx_matrix (output_matrix, nc_c, mx_output_matrix);
+    plhs[1] = timing_results;
+    copy_cf32_to_mx_matrix (context.output_matrix, context.nc_c, mx_output_matrix);
     
-    mxFree (left_matrix);
-    mxFree (right_matrix);
-    mxFree (output_matrix);
+    mxFree (context.left_matrix);
+    mxFree (context.right_matrix);
+    mxFree (context.output_matrix);
 }

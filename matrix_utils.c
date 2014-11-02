@@ -1,9 +1,22 @@
+#include <pthread.h>
+#include <time.h>
+
 #include <mex.h>
 #include <matrix.h>
 
 #include <sal.h>
 
 #include "matrix_utils.h"
+
+typedef struct
+{
+    void (*matrix_func) (void *);
+    SAL_i32 num_timed_iterations;
+    SAL_i64 min_duration_us;
+    SAL_i64 max_duration_us;
+    SAL_i64 total_duration_us;
+    void *test_specific_context;
+} timed_thread_data;
 
 SAL_cf32* copy_mx_to_cf32_matrix (const mxArray *const mx_matrix, SAL_i32 *const tcols)
 {
@@ -105,4 +118,91 @@ void copy_zf32_to_mx_matrix (const SAL_zf32 *const C_matrix, const SAL_i32 tcols
             imag_out[col_major_index] = C_matrix->imagp[row_major_index];
         }
     }
+}
+
+static void *timing_thread (void * arg)
+{
+    timed_thread_data *const thread_data = (timed_thread_data *) arg;
+    SAL_i32 warmup_iter;
+    SAL_i32 timed_iter;
+    SAL_i64 duration_us;
+    struct timespec start_time, stop_time;
+    
+    /* Perform a warm-up run to try and get code / data cached for a more
+     * representative comparision between different matrix multiply implementations.
+     * e.g. since we haven't attempted to use mlockall */
+    for (warmup_iter = 0; warmup_iter < 2; warmup_iter++)
+    {
+        clock_gettime (CLOCK_MONOTONIC_RAW, &start_time);
+        (*thread_data->matrix_func) (thread_data->test_specific_context);
+        clock_gettime (CLOCK_MONOTONIC_RAW, &stop_time);
+    }
+    
+    for (timed_iter = 0; timed_iter < thread_data->num_timed_iterations; timed_iter++)
+    {
+        clock_gettime (CLOCK_MONOTONIC_RAW, &start_time);
+        (*thread_data->matrix_func) (thread_data->test_specific_context);
+        clock_gettime (CLOCK_MONOTONIC_RAW, &stop_time);
+        duration_us = ((stop_time.tv_sec  * 1000000) + (stop_time.tv_nsec  / 1000)) -
+                      ((start_time.tv_sec * 1000000) + (start_time.tv_nsec / 1000));
+        if (timed_iter == 0)
+        {
+            thread_data->min_duration_us = duration_us;
+            thread_data->max_duration_us = duration_us;
+        }
+        else
+        {
+            if (duration_us < thread_data->min_duration_us)
+            {
+                thread_data->min_duration_us = duration_us;
+            }
+            else if (duration_us > thread_data->max_duration_us)
+            {
+                thread_data->max_duration_us = duration_us;
+            }
+        }
+        thread_data->total_duration_us += duration_us;
+    }
+    
+    return NULL;
+}
+
+mxArray *time_matrix_multiply (void (*matrix_func) (void *),
+                               void *test_specific_context,
+                               SAL_i32 num_timed_iterations)
+{
+    timed_thread_data thread_data;
+    pthread_t thread_id;
+    pthread_attr_t attr;
+    void *ret_val;
+    int rc;
+    const char *field_names[] = {"min_duration_us", "max_duration_us", "average_duration_us"};
+    mxArray *timing_results;
+    
+    thread_data.matrix_func = matrix_func;
+    thread_data.test_specific_context = test_specific_context;
+    thread_data.num_timed_iterations = num_timed_iterations;
+    thread_data.min_duration_us = 0;
+    thread_data.max_duration_us = 0;
+    thread_data.total_duration_us = 0;
+    
+    rc = pthread_attr_init (&attr);
+    mxAssertS (rc == 0, "pthread_attr_init");
+    
+    rc = pthread_create (&thread_id, &attr, timing_thread, &thread_data);
+    mxAssertS (rc == 0, "pthread_create");
+    
+    rc = pthread_join (thread_id, &ret_val);
+    mxAssertS (rc == 0, "pthread_join");
+    
+    rc = pthread_attr_destroy (&attr);
+    mxAssertS (rc == 0, "pthread_attr_destroy");
+    
+    timing_results = mxCreateStructMatrix (1, 1, 3, field_names);
+    mxSetFieldByNumber (timing_results, 0, 0, mxCreateDoubleScalar (thread_data.min_duration_us));
+    mxSetFieldByNumber (timing_results, 0, 1, mxCreateDoubleScalar (thread_data.max_duration_us));
+    mxSetFieldByNumber (timing_results, 0, 2,
+            mxCreateDoubleScalar ((double) thread_data.total_duration_us / (double) num_timed_iterations));
+    
+    return timing_results;
 }

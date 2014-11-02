@@ -4,52 +4,7 @@
 
 #include <sal.h>
 
-static SAL_cf32* copy_mx_to_C_matrix (const mxArray *const mx_matrix)
-{
-    const float *real_in = mxGetData (mx_matrix);
-    const float *imag_in = mxGetImagData (mx_matrix);
-    const mwSize *const matrix_dimensions = mxGetDimensions (mx_matrix);
-    const mwSize num_rows = matrix_dimensions[0];
-    const mwSize num_cols = matrix_dimensions[1];
-    SAL_cf32 *const C_matrix = mxCalloc (num_rows * num_cols, sizeof(SAL_cf32));
-    mwSize row, col;
-    mwSize row_major_index, col_major_index;
-    
-    for (row = 0; row < num_rows; row++)
-    {
-        for (col = 0; col < num_cols; col++)
-        {
-            row_major_index = (row * num_cols) + col;
-            col_major_index = (col * num_rows) + row;
-            C_matrix[row_major_index].real = real_in[col_major_index];
-            C_matrix[row_major_index].imag = imag_in[col_major_index];
-        }
-    }
-    
-    return C_matrix;
-}
-
-static void copy_C_to_mx_matrix (const SAL_cf32 *const C_matrix, mxArray *const mx_matrix)
-{
-    float *real_out = mxGetData (mx_matrix);
-    float *imag_out = mxGetImagData (mx_matrix);
-    const mwSize *const matrix_dimensions = mxGetDimensions (mx_matrix);
-    const mwSize num_rows = matrix_dimensions[0];
-    const mwSize num_cols = matrix_dimensions[1];
-    mwSize row, col;
-    mwSize row_major_index, col_major_index;
-    
-    for (row = 0; row < num_rows; row++)
-    {
-        for (col = 0; col < num_cols; col++)
-        {
-            row_major_index = (row * num_cols) + col;
-            col_major_index = (col * num_rows) + row;
-            real_out[col_major_index] = C_matrix[row_major_index].real;
-            imag_out[col_major_index] = C_matrix[row_major_index].imag;
-        }
-    }
-}
+#include "matrix_utils.h"
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
@@ -63,6 +18,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     SAL_cf32 *right_matrix;
     SAL_cf32 *output_matrix;
     SAL_i32 rc;
+    SAL_i32 left_matrix_tcols, right_matrix_tcols;
 
     if (nlhs != 1)
     {
@@ -91,12 +47,12 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         mexErrMsgIdAndTxt ("c_matrix_multiply:d", "Inconsistent number of weights");
     }
 
-    left_matrix = copy_mx_to_C_matrix (left_matrix_in);
-    right_matrix = copy_mx_to_C_matrix (right_matrix_in);
+    left_matrix = copy_mx_to_cf32_matrix (left_matrix_in, &left_matrix_tcols);
+    right_matrix = copy_mx_to_cf32_matrix (right_matrix_in, &right_matrix_tcols);
     output_matrix = mxCalloc (nr_c * nc_c, sizeof(SAL_cf32));
     
-    rc = cmat_mulx (left_matrix, dot_product_length,
-                    right_matrix, nc_c,
+    rc = cmat_mulx (left_matrix, left_matrix_tcols,
+                    right_matrix, right_matrix_tcols,
                     output_matrix, nc_c,
                     nr_c, nc_c, dot_product_length, 0, 0);
     if (rc != SAL_SUCCESS)
@@ -106,7 +62,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
     mx_output_matrix = mxCreateNumericMatrix (nr_c, nc_c, mxSINGLE_CLASS, mxCOMPLEX);
     plhs[0] = mx_output_matrix;
-    copy_C_to_mx_matrix (output_matrix, mx_output_matrix);
+    copy_cf32_to_mx_matrix (output_matrix, nc_c, mx_output_matrix);
     
     mxFree (left_matrix);
     mxFree (right_matrix);

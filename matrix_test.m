@@ -3,8 +3,8 @@
 function matrix_test
 rng('default');
 csv_file = fopen ('errors.csv','w');
-fprintf (csv_file, 'Function,nr_c,dot_product_length,Num Samples,Max ABS difference\n');
-num_timed_iterations = 2;
+fprintf (csv_file, 'Function,nr_c,dot_product_length,Num Samples,Max ABS difference,Min duration us,Max duration us,Average duration us\n');
+num_timed_iterations = 100;
 for nr_c = 2:20
     for dot_product_length = 2:20
         num_samples = 5;
@@ -36,8 +36,9 @@ for nr_c = 2:20
                         imag(matlab_output(max_difference_row, max_difference_col)), ...
                         real(c_output(max_difference_row, max_difference_col)), ...
                         imag(c_output(max_difference_row, max_difference_col)));
-                    fprintf (csv_file,'%s,%u,%u,%d,%.8g\n', f.function, ...
-                        nr_c, dot_product_length, num_samples, max_difference);
+                    fprintf (csv_file,'%s,%u,%u,%d,%.8g,%.1f,%.1f,%.1f\n', f.function, ...
+                        nr_c, dot_product_length, num_samples, max_difference, ...
+                        timing.min_duration_us, timing.max_duration_us, timing.average_duration_us);
                 end
             end
             

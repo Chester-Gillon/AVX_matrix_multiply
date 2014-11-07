@@ -89,7 +89,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     {
         /* Empty output to indicate the maxtrix dimension isn't support */
         mx_output_matrix = mxCreateNumericMatrix (0, 0, mxSINGLE_CLASS, mxCOMPLEX);
-        timing_results = mxCreateStructMatrix (0, 0, 0, NULL);
+        timing_results = mxCreateNumericMatrix (0, 0, mxUINT64_CLASS, mxREAL);
     }
     plhs[0] = mx_output_matrix;
     plhs[1] = timing_results;

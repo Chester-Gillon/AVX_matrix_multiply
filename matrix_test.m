@@ -12,7 +12,7 @@ L3_cache_size = str2double(result);
 
 rng('default');
 csv_file = fopen ('errors.csv','w');
-fprintf (csv_file, 'Function,nr_c,dot_product_length,Num Samples,Max ABS difference,Min duration us,Max duration us,Average duration us,Data set fits in cache\n');
+fprintf (csv_file, 'Function,nr_c,dot_product_length,Num Samples,Max ABS difference,Min duration us,Max duration us,Median duration us,Data set fits in cache,Samples per second\n');
 num_timed_iterations = 100;
 for nr_c = 2:20
     for dot_product_length = 2:20
@@ -43,7 +43,9 @@ for nr_c = 2:20
                 f = functions(matrix_func);
                 fprintf ('Calling %s with nr_c=%u dot_product_length=%u num_samples=%d\n', ...
                     f.function, nr_c, dot_product_length, num_samples);
-                [c_output, timing] = matrix_func(weights, samples, num_timed_iterations);
+                [c_output, durations_ns] = matrix_func(weights, samples, num_timed_iterations);
+                durations_us = double(durations_ns) ./ 1000;
+                samples_per_second = num_samples / (median (durations_us) / 1E6);
                 if ~isempty (c_output)
                     differences = c_output - matlab_output;
                     [differences_rows, differences_row_indices] = max(abs(differences));
@@ -56,9 +58,10 @@ for nr_c = 2:20
                         imag(matlab_output(max_difference_row, max_difference_col)), ...
                         real(c_output(max_difference_row, max_difference_col)), ...
                         imag(c_output(max_difference_row, max_difference_col)));
-                    fprintf (csv_file,'%s,%u,%u,%d,%.8g,%.1f,%.1f,%.1f,%s\n', f.function, ...
+                    fprintf (csv_file,'%s,%u,%u,%d,%.8g,%.1f,%.1f,%.1f,%s,%.0f\n', f.function, ...
                         nr_c, dot_product_length, num_samples, max_difference, ...
-                        timing.min_duration_us, timing.max_duration_us, timing.average_duration_us, cache_fit);
+                        min (durations_us), max (durations_us), median (durations_us), ...
+                        cache_fit, samples_per_second);
                 end
             end
             

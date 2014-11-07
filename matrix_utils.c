@@ -18,9 +18,7 @@ typedef struct
 {
     void (*matrix_func) (void *);
     SAL_i32 num_timed_iterations;
-    SAL_i64 min_duration_ns;
-    SAL_i64 max_duration_ns;
-    SAL_i64 total_duration_ns;
+    SAL_i64 *durations_ns;
     void *test_specific_context;
 } timed_thread_data;
 
@@ -149,25 +147,9 @@ static void *timing_thread (void * arg)
         clock_gettime (CLOCK_MONOTONIC_RAW, &start_time);
         (*thread_data->matrix_func) (thread_data->test_specific_context);
         clock_gettime (CLOCK_MONOTONIC_RAW, &stop_time);
-        duration_ns = ((stop_time.tv_sec  * 1000000000) + stop_time.tv_nsec ) -
-                      ((start_time.tv_sec * 1000000000) + start_time.tv_nsec);
-        if (timed_iter == 0)
-        {
-            thread_data->min_duration_ns = duration_ns;
-            thread_data->max_duration_ns = duration_ns;
-        }
-        else
-        {
-            if (duration_ns < thread_data->min_duration_ns)
-            {
-                thread_data->min_duration_ns = duration_ns;
-            }
-            else if (duration_ns > thread_data->max_duration_ns)
-            {
-                thread_data->max_duration_ns = duration_ns;
-            }
-        }
-        thread_data->total_duration_ns += duration_ns;
+        thread_data->durations_ns[timed_iter] =
+                duration_ns = ((stop_time.tv_sec  * 1000000000) + stop_time.tv_nsec ) -
+                              ((start_time.tv_sec * 1000000000) + start_time.tv_nsec);
     }
     
     return NULL;
@@ -182,17 +164,16 @@ mxArray *time_matrix_multiply (void (*matrix_func) (void *),
     pthread_attr_t attr;
     void *ret_val;
     int rc;
-    const char *field_names[] = {"min_duration_us", "max_duration_us", "average_duration_us"};
     mxArray *timing_results;
     cpu_set_t cpu_set;
     struct sched_param param;
     
+    timing_results = mxCreateNumericMatrix (1, num_timed_iterations, mxUINT64_CLASS, mxREAL);
+    
     thread_data.matrix_func = matrix_func;
     thread_data.test_specific_context = test_specific_context;
     thread_data.num_timed_iterations = num_timed_iterations;
-    thread_data.min_duration_ns = 0;
-    thread_data.max_duration_ns = 0;
-    thread_data.total_duration_ns = 0;
+    thread_data.durations_ns = mxGetData (timing_results);
     
     rc = pthread_attr_init (&attr);
     mxAssertS (rc == 0, "pthread_attr_init");
@@ -227,12 +208,6 @@ mxArray *time_matrix_multiply (void (*matrix_func) (void *),
     
     rc = pthread_attr_destroy (&attr);
     mxAssertS (rc == 0, "pthread_attr_destroy");
-    
-    timing_results = mxCreateStructMatrix (1, 1, 3, field_names);
-    mxSetFieldByNumber (timing_results, 0, 0, mxCreateDoubleScalar ((double) thread_data.min_duration_ns / 1000.0));
-    mxSetFieldByNumber (timing_results, 0, 1, mxCreateDoubleScalar ((double) thread_data.max_duration_ns / 1000.0));
-    mxSetFieldByNumber (timing_results, 0, 2,
-            mxCreateDoubleScalar ((double) thread_data.total_duration_ns / 1000.0 / (double) num_timed_iterations));
     
     return timing_results;
 }

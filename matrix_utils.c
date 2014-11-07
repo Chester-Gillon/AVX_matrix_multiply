@@ -1,5 +1,11 @@
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <pthread.h>
 #include <time.h>
+#include <unistd.h>
+#include <errno.h>
 
 #include <mex.h>
 #include <matrix.h>
@@ -12,9 +18,9 @@ typedef struct
 {
     void (*matrix_func) (void *);
     SAL_i32 num_timed_iterations;
-    SAL_i64 min_duration_us;
-    SAL_i64 max_duration_us;
-    SAL_i64 total_duration_us;
+    SAL_i64 min_duration_ns;
+    SAL_i64 max_duration_ns;
+    SAL_i64 total_duration_ns;
     void *test_specific_context;
 } timed_thread_data;
 
@@ -125,7 +131,7 @@ static void *timing_thread (void * arg)
     timed_thread_data *const thread_data = (timed_thread_data *) arg;
     SAL_i32 warmup_iter;
     SAL_i32 timed_iter;
-    SAL_i64 duration_us;
+    SAL_i64 duration_ns;
     struct timespec start_time, stop_time;
     
     /* Perform a warm-up run to try and get code / data cached for a more
@@ -143,25 +149,25 @@ static void *timing_thread (void * arg)
         clock_gettime (CLOCK_MONOTONIC_RAW, &start_time);
         (*thread_data->matrix_func) (thread_data->test_specific_context);
         clock_gettime (CLOCK_MONOTONIC_RAW, &stop_time);
-        duration_us = ((stop_time.tv_sec  * 1000000) + (stop_time.tv_nsec  / 1000)) -
-                      ((start_time.tv_sec * 1000000) + (start_time.tv_nsec / 1000));
+        duration_ns = ((stop_time.tv_sec  * 1000000000) + stop_time.tv_nsec ) -
+                      ((start_time.tv_sec * 1000000000) + start_time.tv_nsec);
         if (timed_iter == 0)
         {
-            thread_data->min_duration_us = duration_us;
-            thread_data->max_duration_us = duration_us;
+            thread_data->min_duration_ns = duration_ns;
+            thread_data->max_duration_ns = duration_ns;
         }
         else
         {
-            if (duration_us < thread_data->min_duration_us)
+            if (duration_ns < thread_data->min_duration_ns)
             {
-                thread_data->min_duration_us = duration_us;
+                thread_data->min_duration_ns = duration_ns;
             }
-            else if (duration_us > thread_data->max_duration_us)
+            else if (duration_ns > thread_data->max_duration_ns)
             {
-                thread_data->max_duration_us = duration_us;
+                thread_data->max_duration_ns = duration_ns;
             }
         }
-        thread_data->total_duration_us += duration_us;
+        thread_data->total_duration_ns += duration_ns;
     }
     
     return NULL;
@@ -178,19 +184,43 @@ mxArray *time_matrix_multiply (void (*matrix_func) (void *),
     int rc;
     const char *field_names[] = {"min_duration_us", "max_duration_us", "average_duration_us"};
     mxArray *timing_results;
+    cpu_set_t cpu_set;
+    struct sched_param param;
     
     thread_data.matrix_func = matrix_func;
     thread_data.test_specific_context = test_specific_context;
     thread_data.num_timed_iterations = num_timed_iterations;
-    thread_data.min_duration_us = 0;
-    thread_data.max_duration_us = 0;
-    thread_data.total_duration_us = 0;
+    thread_data.min_duration_ns = 0;
+    thread_data.max_duration_ns = 0;
+    thread_data.total_duration_ns = 0;
     
     rc = pthread_attr_init (&attr);
     mxAssertS (rc == 0, "pthread_attr_init");
     
+    /* Run thread only on highest numbered CPU - which can be isolated from
+     * being used for other processes using tuna */
+    CPU_ZERO (&cpu_set);
+    CPU_SET (sysconf( _SC_NPROCESSORS_ONLN ) - 1, &cpu_set);
+    rc = pthread_attr_setaffinity_np (&attr, sizeof(cpu_set), &cpu_set);
+    mxAssertS (rc == 0, "pthread_attr_setaffinity_np");
+    
+    /* Create thread as real-time to minimise interruptions */
+    rc = pthread_attr_setinheritsched (&attr, PTHREAD_EXPLICIT_SCHED);
+    mxAssertS (rc == 0, "pthread_attr_setinheritsched");
+    
+    rc = pthread_attr_setschedpolicy (&attr, SCHED_FIFO);
+    mxAssertS (rc == 0, "pthread_attr_setschedpolicy");
+    
+    param.sched_priority = 49;
+    rc = pthread_attr_setschedparam (&attr, &param);
+    mxAssertS (rc == 0, "pthread_attr_setschedparam");
+    
     rc = pthread_create (&thread_id, &attr, timing_thread, &thread_data);
-    mxAssertS (rc == 0, "pthread_create");
+    if (rc != 0)
+    {
+        mexErrMsgIdAndTxt ("time_matrix_multiply:pthread_create",
+                "This can fail due to insufficient permission to set rtprio : rc=%d, error=%s", rc, sys_errlist[rc]);
+    }
     
     rc = pthread_join (thread_id, &ret_val);
     mxAssertS (rc == 0, "pthread_join");
@@ -199,10 +229,10 @@ mxArray *time_matrix_multiply (void (*matrix_func) (void *),
     mxAssertS (rc == 0, "pthread_attr_destroy");
     
     timing_results = mxCreateStructMatrix (1, 1, 3, field_names);
-    mxSetFieldByNumber (timing_results, 0, 0, mxCreateDoubleScalar (thread_data.min_duration_us));
-    mxSetFieldByNumber (timing_results, 0, 1, mxCreateDoubleScalar (thread_data.max_duration_us));
+    mxSetFieldByNumber (timing_results, 0, 0, mxCreateDoubleScalar ((double) thread_data.min_duration_ns / 1000.0));
+    mxSetFieldByNumber (timing_results, 0, 1, mxCreateDoubleScalar ((double) thread_data.max_duration_ns / 1000.0));
     mxSetFieldByNumber (timing_results, 0, 2,
-            mxCreateDoubleScalar ((double) thread_data.total_duration_us / (double) num_timed_iterations));
+            mxCreateDoubleScalar ((double) thread_data.total_duration_ns / 1000.0 / (double) num_timed_iterations));
     
     return timing_results;
 }

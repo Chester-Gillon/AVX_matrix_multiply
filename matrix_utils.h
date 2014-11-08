@@ -6,4 +6,5 @@ void copy_zf32_to_mx_matrix (const SAL_zf32 *const C_matrix, const SAL_i32 tcols
                              mxArray *const mx_matrix);
 mxArray *time_matrix_multiply (void (*matrix_func) (void *),
                                void *test_specific_context,
-                               SAL_i32 num_timed_iterations);
+                               const SAL_i32 num_timed_iterations,
+                               const bool block_other_cpus);

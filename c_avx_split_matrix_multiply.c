@@ -32,6 +32,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     const mxArray *const left_matrix_in = prhs[0];
     const mxArray *const right_matrix_in = prhs[1];
     const mxArray *const num_timed_iterations_in = prhs[2];
+    const mxArray *const block_other_cpus_in = prhs[3];
     const mwSize *left_matrix_dimensions;
     const mwSize *right_matrix_dimensions;
     mxArray *mx_output_matrix;
@@ -42,7 +43,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     {
         mexErrMsgIdAndTxt ("c_avx_split_matrix_multiply:a", "Incorrect number of outputs");
     }
-    if (nrhs != 3)
+    if (nrhs != 4)
     {
         mexErrMsgIdAndTxt ("c_avx_split_matrix_multiply:b", "Incorrect number of inputs");
     }
@@ -73,7 +74,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         context.output_matrix.realp = mxCalloc (context.nr_c * context.output_matrix_tcols, sizeof(float));
         context.output_matrix.imagp = mxCalloc (context.nr_c * context.output_matrix_tcols, sizeof(float));
 
-        timing_results = time_matrix_multiply (timed_c_matrix_multiply, &context, mxGetScalar (num_timed_iterations_in));
+        timing_results = time_matrix_multiply (timed_c_matrix_multiply, &context, mxGetScalar (num_timed_iterations_in),
+                                               mxGetScalar (block_other_cpus_in));
         if (context.rc != SAL_SUCCESS)
         {
             mexErrMsgIdAndTxt ("c_avx_split_matrix_multiply:e", "zmat_mulx failed with rc=%u", context.rc);

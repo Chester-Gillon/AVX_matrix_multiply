@@ -6,6 +6,8 @@
 #include <time.h>
 #include <unistd.h>
 #include <errno.h>
+#include <semaphore.h>
+#include <sys/mman.h>
 
 #include <mex.h>
 #include <matrix.h>
@@ -14,12 +16,22 @@
 
 #include "matrix_utils.h"
 
+#define MAX_CPUS 32
+
+typedef struct
+{
+    sem_t ready_sem;
+    sem_t go_sem;
+} blocking_thread_sems;
+
 typedef struct
 {
     void (*matrix_func) (void *);
     SAL_i32 num_timed_iterations;
     SAL_i64 *durations_ns;
     void *test_specific_context;
+    SAL_i32 num_blocked_cpus;
+    blocking_thread_sems blocking_sems[MAX_CPUS];
 } timed_thread_data;
 
 SAL_cf32* copy_mx_to_cf32_matrix (const mxArray *const mx_matrix, SAL_i32 *const tcols)
@@ -124,13 +136,56 @@ void copy_zf32_to_mx_matrix (const SAL_zf32 *const C_matrix, const SAL_i32 tcols
     }
 }
 
-static void *timing_thread (void * arg)
+static void *cpu_blocking_thread (void *arg)
+{
+    blocking_thread_sems *const blocking_sems = (blocking_thread_sems *) arg;
+    int rc;
+    
+    rc = sem_post (&blocking_sems->ready_sem);
+    mxAssertS (rc == 0, "sem_post");
+    
+    rc = sem_wait (&blocking_sems->go_sem);
+    mxAssertS (rc == 0, "sem_wait");
+    
+    do
+    {
+        rc = sem_trywait (&blocking_sems->go_sem);
+    } while (rc != 0);
+    
+    return NULL;
+}
+
+static void *timing_thread (void *arg)
 {
     timed_thread_data *const thread_data = (timed_thread_data *) arg;
     SAL_i32 warmup_iter;
     SAL_i32 timed_iter;
     SAL_i64 duration_ns;
     struct timespec start_time, stop_time;
+    SAL_i32 blocking_thread_index;
+    int rc;
+
+    for (timed_iter = 0; timed_iter < thread_data->num_timed_iterations; timed_iter++)
+    {
+        thread_data->durations_ns[timed_iter] = 0;
+    }
+    
+    /* Request the blocking threads running on the other CPUs to spin in a
+     * tight loop at the same real-time priority as this thread during the
+     * duration of the timing test.
+     * This is try and prevent other CPUs from consuming L3 / memory bandwidth
+     * during the duration of the timing test. */
+    for (blocking_thread_index = 0; blocking_thread_index < thread_data->num_blocked_cpus; blocking_thread_index++)
+    {
+        rc = sem_wait (&thread_data->blocking_sems[blocking_thread_index].ready_sem);
+        mxAssertS (rc == 0, "sem_wait");
+    }
+
+    for (blocking_thread_index = 0; blocking_thread_index < thread_data->num_blocked_cpus; blocking_thread_index++)
+    {
+        rc = sem_post (&thread_data->blocking_sems[blocking_thread_index].go_sem);
+        mxAssertS (rc == 0, "sem_post");
+    }
     
     /* Perform a warm-up run to try and get code / data cached for a more
      * representative comparision between different matrix multiply implementations.
@@ -148,8 +203,15 @@ static void *timing_thread (void * arg)
         (*thread_data->matrix_func) (thread_data->test_specific_context);
         clock_gettime (CLOCK_MONOTONIC_RAW, &stop_time);
         thread_data->durations_ns[timed_iter] =
-                duration_ns = ((stop_time.tv_sec  * 1000000000) + stop_time.tv_nsec ) -
-                              ((start_time.tv_sec * 1000000000) + start_time.tv_nsec);
+                duration_ns = ((stop_time.tv_sec  * 1000000000LL) + stop_time.tv_nsec ) -
+                              ((start_time.tv_sec * 1000000000LL) + start_time.tv_nsec);
+    }
+    
+    /* Tell the blocking threads to exit */
+    for (blocking_thread_index = 0; blocking_thread_index < thread_data->num_blocked_cpus; blocking_thread_index++)
+    {
+        rc = sem_post (&thread_data->blocking_sems[blocking_thread_index].go_sem);
+        mxAssertS (rc == 0, "sem_post");
     }
     
     return NULL;
@@ -157,16 +219,23 @@ static void *timing_thread (void * arg)
 
 mxArray *time_matrix_multiply (void (*matrix_func) (void *),
                                void *test_specific_context,
-                               SAL_i32 num_timed_iterations)
+                               const SAL_i32 num_timed_iterations,
+                               const bool block_other_cpus)
 {
     timed_thread_data thread_data;
-    pthread_t thread_id;
+    pthread_t timing_thread_id;
+    pthread_t blocking_thread_ids[MAX_CPUS];
     pthread_attr_t attr;
     void *ret_val;
     int rc;
     mxArray *timing_results;
     cpu_set_t cpu_set;
     struct sched_param param;
+    const SAL_i32 num_cpus = sysconf(_SC_NPROCESSORS_ONLN);
+    SAL_i32 blocking_thread_index;
+    
+    rc = mlockall (MCL_CURRENT | MCL_FUTURE);
+    mxAssertS (rc == 0, "mlockall");
     
     timing_results = mxCreateNumericMatrix (1, num_timed_iterations, mxUINT64_CLASS, mxREAL);
     
@@ -174,18 +243,21 @@ mxArray *time_matrix_multiply (void (*matrix_func) (void *),
     thread_data.test_specific_context = test_specific_context;
     thread_data.num_timed_iterations = num_timed_iterations;
     thread_data.durations_ns = mxGetData (timing_results);
+    thread_data.num_blocked_cpus = block_other_cpus ? num_cpus - 1 : 0;
+    
+    for (blocking_thread_index = 0; blocking_thread_index < thread_data.num_blocked_cpus; blocking_thread_index++)
+    {
+        blocking_thread_sems *const blocking_sems = &thread_data.blocking_sems[blocking_thread_index];
+        rc = sem_init (&blocking_sems->ready_sem, 0, 0);
+        mxAssertS (rc == 0, "sem_init");
+        rc = sem_init (&blocking_sems->go_sem, 0, 0);
+        mxAssertS (rc == 0, "sem_init");
+    }
     
     rc = pthread_attr_init (&attr);
     mxAssertS (rc == 0, "pthread_attr_init");
     
-    /* Run thread only on highest numbered CPU - which can be isolated from
-     * being used for other processes using tuna */
-    CPU_ZERO (&cpu_set);
-    CPU_SET (sysconf( _SC_NPROCESSORS_ONLN ) - 1, &cpu_set);
-    rc = pthread_attr_setaffinity_np (&attr, sizeof(cpu_set), &cpu_set);
-    mxAssertS (rc == 0, "pthread_attr_setaffinity_np");
-    
-    /* Create thread as real-time to minimise interruptions */
+    /* Create threads as real-time to minimise interruptions */
     rc = pthread_attr_setinheritsched (&attr, PTHREAD_EXPLICIT_SCHED);
     mxAssertS (rc == 0, "pthread_attr_setinheritsched");
     
@@ -196,18 +268,57 @@ mxArray *time_matrix_multiply (void (*matrix_func) (void *),
     rc = pthread_attr_setschedparam (&attr, &param);
     mxAssertS (rc == 0, "pthread_attr_setschedparam");
     
-    rc = pthread_create (&thread_id, &attr, timing_thread, &thread_data);
+    /* Run thread only on highest numbered CPU - which can be isolated from
+     * being used for other processes using tuna */
+    mxAssertS (num_cpus <= MAX_CPUS, "sysconf(_SC_NPROCESSORS_ONLN) larger than MAX_CPUS");
+    CPU_ZERO (&cpu_set);
+    CPU_SET (num_cpus - 1, &cpu_set);
+    rc = pthread_attr_setaffinity_np (&attr, sizeof(cpu_set), &cpu_set);
+    mxAssertS (rc == 0, "pthread_attr_setaffinity_np");
+    
+    rc = pthread_create (&timing_thread_id, &attr, timing_thread, &thread_data);
     if (rc != 0)
     {
         mexErrMsgIdAndTxt ("time_matrix_multiply:pthread_create",
                 "This can fail due to insufficient permission to set rtprio : rc=%d, error=%s", rc, sys_errlist[rc]);
     }
     
-    rc = pthread_join (thread_id, &ret_val);
+    /* Start blocking threads on all CPUs not used for the timing test */
+    for (blocking_thread_index = 0; blocking_thread_index < thread_data.num_blocked_cpus; blocking_thread_index++)
+    {
+        blocking_thread_sems *const blocking_sems = &thread_data.blocking_sems[blocking_thread_index];
+
+        CPU_ZERO (&cpu_set);
+        CPU_SET (blocking_thread_index, &cpu_set);
+        rc = pthread_attr_setaffinity_np (&attr, sizeof(cpu_set), &cpu_set);
+        mxAssertS (rc == 0, "pthread_attr_setaffinity_np");
+            
+        rc = pthread_create (&blocking_thread_ids[blocking_thread_index], &attr, cpu_blocking_thread, blocking_sems);
+        mxAssertS (rc == 0, "pthread_create");
+    }
+    
+    rc = pthread_join (timing_thread_id, &ret_val);
     mxAssertS (rc == 0, "pthread_join");
+    
+    /* Terminate blocking threads */
+    for (blocking_thread_index = 0; blocking_thread_index < thread_data.num_blocked_cpus; blocking_thread_index++)
+    {
+        blocking_thread_sems *const blocking_sems = &thread_data.blocking_sems[blocking_thread_index];
+
+        rc = pthread_join (blocking_thread_ids[blocking_thread_index], &ret_val);
+        mxAssertS (rc == 0, "pthread_join");
+            
+        rc = sem_destroy (&blocking_sems->ready_sem);
+        mxAssertS (rc == 0, "sem_destroy");
+        rc = sem_destroy (&blocking_sems->go_sem);
+        mxAssertS (rc == 0, "sem_destroy");
+    }
     
     rc = pthread_attr_destroy (&attr);
     mxAssertS (rc == 0, "pthread_attr_destroy");
+    
+    /*rc = munlockall ();
+    mxAssertS (rc == 0, "mlockall");*/
     
     return timing_results;
 }

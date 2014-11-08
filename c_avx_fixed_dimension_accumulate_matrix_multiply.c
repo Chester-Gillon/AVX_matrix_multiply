@@ -32,6 +32,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     const mxArray *const left_matrix_in = prhs[0];
     const mxArray *const right_matrix_in = prhs[1];
     const mxArray *const num_timed_iterations_in = prhs[2];
+    const mxArray *const block_other_cpus_in = prhs[3];
     const mwSize *left_matrix_dimensions;
     const mwSize *right_matrix_dimensions;
     mxArray *mx_output_matrix;
@@ -42,7 +43,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     {
         mexErrMsgIdAndTxt ("c_avx_fixed_dimension_accumulate_matrix_multiply:a", "Incorrect number of outputs");
     }
-    if (nrhs != 3)
+    if (nrhs != 4)
     {
         mexErrMsgIdAndTxt ("c_avx_fixed_dimension_accumulate_matrix_multiply:b", "Incorrect number of inputs");
     }
@@ -79,7 +80,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         context.output_matrix_tcols = (context.nc_c + 3) & ~3;
         context.output_matrix = mxCalloc (context.nr_c * context.output_matrix_tcols, sizeof(SAL_cf32));
 
-        timing_results = time_matrix_multiply (timed_c_matrix_multiply, &context, mxGetScalar (num_timed_iterations_in));
+        timing_results = time_matrix_multiply (timed_c_matrix_multiply, &context, mxGetScalar (num_timed_iterations_in),
+                                               mxGetScalar (block_other_cpus_in));
 
         mx_output_matrix = mxCreateNumericMatrix (context.nr_c, context.nc_c, mxSINGLE_CLASS, mxCOMPLEX);
         copy_cf32_to_mx_matrix (context.output_matrix, context.output_matrix_tcols, mx_output_matrix);

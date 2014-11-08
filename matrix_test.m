@@ -12,60 +12,68 @@ L3_cache_size = str2double(result);
 
 rng('default');
 csv_file = fopen ('errors.csv','w');
-fprintf (csv_file, 'Function,nr_c,dot_product_length,Num Samples,Max ABS difference,Min duration us,Max duration us,Median duration us,Data set fits in cache,Samples per second\n');
-num_timed_iterations = 100;
+fprintf (csv_file, 'Function,nr_c,dot_product_length,Num Samples,Block Other CPUs,Max ABS difference,Min duration us,Max duration us,Median duration us,Data set fits in cache,Samples per second,Durations us\n');
+num_timed_iterations = 1000;
 for nr_c = 2:20
     for dot_product_length = 2:20
-        num_samples = 5;
-        while num_samples <= 128 * 1024
-            weights = complex(rand([nr_c dot_product_length],'single') - 0.5, rand([nr_c dot_product_length],'single') - 0.5);
-            samples = complex(rand([dot_product_length num_samples],'single') - 0.5, rand([dot_product_length num_samples],'single') - 0.5);
-            matlab_output = weights * samples;
-            
-            data_set_size_bytes = (nr_c + dot_product_length) * num_samples * 8;
-            if data_set_size_bytes < L1_cache_size
-                cache_fit = 'L1';
-            elseif data_set_size_bytes < L2_cache_size
-                cache_fit = 'L2';
-            elseif data_set_size_bytes < L3_cache_size
-                cache_fit = 'L3';
-            else
-                cache_fit = 'None';
-            end
-            
-            funcs = {@c_matrix_multiply ...
-                @c_avx_split_matrix_multiply @c_avx_interleave_matrix_multiply  ...
-                @c_opensal_matrix_multiply ...
-                @c_avx_fixed_dimension_matrix_multiply ...
-                @c_avx_fixed_dimension_accumulate_matrix_multiply};
-            for index=1:length(funcs)
-                matrix_func = funcs{index};
-                f = functions(matrix_func);
-                fprintf ('Calling %s with nr_c=%u dot_product_length=%u num_samples=%d\n', ...
-                    f.function, nr_c, dot_product_length, num_samples);
-                [c_output, durations_ns] = matrix_func(weights, samples, num_timed_iterations);
-                durations_us = double(durations_ns) ./ 1000;
-                samples_per_second = num_samples / (median (durations_us) / 1E6);
-                if ~isempty (c_output)
-                    differences = c_output - matlab_output;
-                    [differences_rows, differences_row_indices] = max(abs(differences));
-                    [max_difference, max_difference_col] = max(differences_rows);
-                    max_difference_row = differences_row_indices(max_difference_col);
-                    fprintf ('Max abs difference = %.8g, at row %d col %d\n', ...
-                        max_difference, max_difference_row, max_difference_col);
-                    fprintf ('For max difference : matlab_output = %.8g%+.8gi, c_output = %.8g%+.8gi\n', ...
-                        real(matlab_output(max_difference_row, max_difference_col)), ...
-                        imag(matlab_output(max_difference_row, max_difference_col)), ...
-                        real(c_output(max_difference_row, max_difference_col)), ...
-                        imag(c_output(max_difference_row, max_difference_col)));
-                    fprintf (csv_file,'%s,%u,%u,%d,%.8g,%.1f,%.1f,%.1f,%s,%.0f\n', f.function, ...
-                        nr_c, dot_product_length, num_samples, max_difference, ...
-                        min (durations_us), max (durations_us), median (durations_us), ...
-                        cache_fit, samples_per_second);
+        for repeat = 1:5
+            for block_other_cpus = 0:1
+                num_samples = 5;
+                while num_samples <= 128 * 1024
+                    weights = complex(rand([nr_c dot_product_length],'single') - 0.5, rand([nr_c dot_product_length],'single') - 0.5);
+                    samples = complex(rand([dot_product_length num_samples],'single') - 0.5, rand([dot_product_length num_samples],'single') - 0.5);
+                    matlab_output = weights * samples;
+                    
+                    data_set_size_bytes = (nr_c + dot_product_length) * num_samples * 8;
+                    if data_set_size_bytes < L1_cache_size
+                        cache_fit = 'L1';
+                    elseif data_set_size_bytes < L2_cache_size
+                        cache_fit = 'L2';
+                    elseif data_set_size_bytes < L3_cache_size
+                        cache_fit = 'L3';
+                    else
+                        cache_fit = 'None';
+                    end
+                    
+                    funcs = {%@c_matrix_multiply ...
+                        %@c_avx_split_matrix_multiply @c_avx_interleave_matrix_multiply  ...
+                        %@c_opensal_matrix_multiply ...
+                        @c_avx_fixed_dimension_matrix_multiply ...
+                        @c_avx_fixed_dimension_accumulate_matrix_multiply};
+                    for index=1:length(funcs)
+                        matrix_func = funcs{index};
+                        f = functions(matrix_func);
+                        fprintf ('Calling %s with nr_c=%u dot_product_length=%u num_samples=%d block_other_cpus=%u\n', ...
+                            f.function, nr_c, dot_product_length, num_samples, block_other_cpus);
+                        [c_output, durations_ns] = matrix_func(weights, samples, num_timed_iterations, block_other_cpus);
+                        durations_us = double(durations_ns) ./ 1000;
+                        samples_per_second = num_samples / (median (durations_us) / 1E6);
+                        if ~isempty (c_output)
+                            differences = c_output - matlab_output;
+                            [differences_rows, differences_row_indices] = max(abs(differences));
+                            [max_difference, max_difference_col] = max(differences_rows);
+                            max_difference_row = differences_row_indices(max_difference_col);
+                            fprintf ('Max abs difference = %.8g, at row %d col %d\n', ...
+                                max_difference, max_difference_row, max_difference_col);
+                            fprintf ('For max difference : matlab_output = %.8g%+.8gi, c_output = %.8g%+.8gi\n', ...
+                                real(matlab_output(max_difference_row, max_difference_col)), ...
+                                imag(matlab_output(max_difference_row, max_difference_col)), ...
+                                real(c_output(max_difference_row, max_difference_col)), ...
+                                imag(c_output(max_difference_row, max_difference_col)));
+                            fprintf (csv_file,'%s,%u,%u,%u,%u,%.8g,%.1f,%.1f,%.1f,%s,%.0f', f.function, ...
+                                nr_c, dot_product_length, num_samples, block_other_cpus, max_difference, ...
+                                min (durations_us), max (durations_us), median (durations_us), ...
+                                cache_fit, samples_per_second);
+                            if max(durations_us) > (3 * median (durations_us))
+                                fprintf (csv_file,',%.1f',durations_us);
+                            end
+                            fprintf (csv_file,'\n');
+                        end
+                    end
+                    
+                    num_samples = num_samples * 3;
                 end
             end
-            
-            num_samples = num_samples * 3;
         end
     end
 end

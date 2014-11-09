@@ -94,7 +94,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     {
         /* Empty output matrix indicates fixed dimensions not support */
         mx_output_matrix = mxCreateNumericMatrix (0, 0, mxSINGLE_CLASS, mxCOMPLEX);
-        timing_results = mxCreateNumericMatrix (0, 0, mxUINT64_CLASS, mxREAL);
+        timing_results = mxCreateStructMatrix (0, 0, 0, NULL);
     }
     plhs[0] = mx_output_matrix;
     plhs[1] = timing_results;

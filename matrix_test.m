@@ -16,7 +16,7 @@ fprintf (csv_file, 'Function,nr_c,dot_product_length,Num Samples,Block Other CPU
 num_timed_iterations = 1000;
 for nr_c = 2:20
     for dot_product_length = 2:20
-        for repeat = 1:5
+        for repeat = 1%1:5
             for block_other_cpus = 0:1
                 num_samples = 5;
                 while num_samples <= 128 * 1024
@@ -35,9 +35,9 @@ for nr_c = 2:20
                         cache_fit = 'None';
                     end
                     
-                    funcs = {%@c_matrix_multiply ...
-                        %@c_avx_split_matrix_multiply @c_avx_interleave_matrix_multiply  ...
-                        %@c_opensal_matrix_multiply ...
+                    funcs = {@c_matrix_multiply ...
+                        @c_avx_split_matrix_multiply @c_avx_interleave_matrix_multiply  ...
+                        @c_opensal_matrix_multiply ...
                         @c_avx_fixed_dimension_matrix_multiply ...
                         @c_avx_fixed_dimension_accumulate_matrix_multiply};
                     for index=1:length(funcs)
@@ -45,10 +45,12 @@ for nr_c = 2:20
                         f = functions(matrix_func);
                         fprintf ('Calling %s with nr_c=%u dot_product_length=%u num_samples=%d block_other_cpus=%u\n', ...
                             f.function, nr_c, dot_product_length, num_samples, block_other_cpus);
-                        [c_output, durations_ns] = matrix_func(weights, samples, num_timed_iterations, block_other_cpus);
-                        durations_us = double(durations_ns) ./ 1000;
-                        samples_per_second = num_samples / (median (durations_us) / 1E6);
+                        [c_output, timing_results] = matrix_func(weights, samples, num_timed_iterations, block_other_cpus);
                         if ~isempty (c_output)
+                            start_times_ns = (uint64(timing_results.start_times_tv_sec) .* uint64(1E9)) + (uint64(timing_results.start_times_tv_nsec));
+                            stop_times_ns = (uint64(timing_results.stop_times_tv_sec) .* uint64(1E9)) + (uint64(timing_results.stop_times_tv_nsec));
+                            durations_us = double(stop_times_ns - start_times_ns) ./ 1000;
+                            samples_per_second = num_samples / (median (durations_us) / 1E6);
                             differences = c_output - matlab_output;
                             [differences_rows, differences_row_indices] = max(abs(differences));
                             [max_difference, max_difference_col] = max(differences_rows);

@@ -26,9 +26,15 @@ typedef struct
 
 typedef struct
 {
+    struct timespec start_time;
+    struct timespec stop_time;
+} test_times;
+
+typedef struct
+{
     void (*matrix_func) (void *);
     SAL_i32 num_timed_iterations;
-    SAL_i64 *durations_ns;
+    test_times *times;
     void *test_specific_context;
     SAL_i32 num_blocked_cpus;
     blocking_thread_sems blocking_sems[MAX_CPUS];
@@ -160,15 +166,9 @@ static void *timing_thread (void *arg)
     timed_thread_data *const thread_data = (timed_thread_data *) arg;
     SAL_i32 warmup_iter;
     SAL_i32 timed_iter;
-    SAL_i64 duration_ns;
     struct timespec start_time, stop_time;
     SAL_i32 blocking_thread_index;
     int rc;
-
-    for (timed_iter = 0; timed_iter < thread_data->num_timed_iterations; timed_iter++)
-    {
-        thread_data->durations_ns[timed_iter] = 0;
-    }
     
     /* Request the blocking threads running on the other CPUs to spin in a
      * tight loop at the same real-time priority as this thread during the
@@ -188,8 +188,7 @@ static void *timing_thread (void *arg)
     }
     
     /* Perform a warm-up run to try and get code / data cached for a more
-     * representative comparision between different matrix multiply implementations.
-     * e.g. since we haven't attempted to use mlockall */
+     * representative comparision between different matrix multiply implementations. */
     for (warmup_iter = 0; warmup_iter < 2; warmup_iter++)
     {
         clock_gettime (CLOCK_MONOTONIC_RAW, &start_time);
@@ -199,12 +198,9 @@ static void *timing_thread (void *arg)
     
     for (timed_iter = 0; timed_iter < thread_data->num_timed_iterations; timed_iter++)
     {
-        clock_gettime (CLOCK_MONOTONIC_RAW, &start_time);
+        clock_gettime (CLOCK_MONOTONIC_RAW, &thread_data->times[timed_iter].start_time);
         (*thread_data->matrix_func) (thread_data->test_specific_context);
-        clock_gettime (CLOCK_MONOTONIC_RAW, &stop_time);
-        thread_data->durations_ns[timed_iter] =
-                duration_ns = ((stop_time.tv_sec  * 1000000000LL) + stop_time.tv_nsec ) -
-                              ((start_time.tv_sec * 1000000000LL) + start_time.tv_nsec);
+        clock_gettime (CLOCK_MONOTONIC_RAW, &thread_data->times[timed_iter].stop_time);
     }
     
     /* Tell the blocking threads to exit */
@@ -233,16 +229,24 @@ mxArray *time_matrix_multiply (void (*matrix_func) (void *),
     struct sched_param param;
     const SAL_i32 num_cpus = sysconf(_SC_NPROCESSORS_ONLN);
     SAL_i32 blocking_thread_index;
+    SAL_i32 timed_iter;
+    mxArray *start_times_tv_sec;
+    SAL_i32 *start_times_tv_sec_data;
+    mxArray *start_times_tv_nsec;
+    SAL_i32 *start_times_tv_nsec_data;
+    mxArray *stop_times_tv_sec;
+    SAL_i32 *stop_times_tv_sec_data;
+    mxArray *stop_times_tv_nsec;
+    SAL_i32 *stop_times_tv_nsec_data;
+    const char *field_names[] = {"start_times_tv_sec", "start_times_tv_nsec", "stop_times_tv_sec", "stop_times_tv_nsec"};
     
     rc = mlockall (MCL_CURRENT | MCL_FUTURE);
     mxAssertS (rc == 0, "mlockall");
     
-    timing_results = mxCreateNumericMatrix (1, num_timed_iterations, mxUINT64_CLASS, mxREAL);
-    
     thread_data.matrix_func = matrix_func;
     thread_data.test_specific_context = test_specific_context;
     thread_data.num_timed_iterations = num_timed_iterations;
-    thread_data.durations_ns = mxGetData (timing_results);
+    thread_data.times = mxCalloc (num_timed_iterations, sizeof (test_times));
     thread_data.num_blocked_cpus = block_other_cpus ? num_cpus - 1 : 0;
     
     for (blocking_thread_index = 0; blocking_thread_index < thread_data.num_blocked_cpus; blocking_thread_index++)
@@ -316,9 +320,29 @@ mxArray *time_matrix_multiply (void (*matrix_func) (void *),
     
     rc = pthread_attr_destroy (&attr);
     mxAssertS (rc == 0, "pthread_attr_destroy");
+
+    start_times_tv_sec = mxCreateNumericMatrix (1, num_timed_iterations, mxINT32_CLASS, mxREAL);
+    start_times_tv_nsec = mxCreateNumericMatrix (1, num_timed_iterations, mxINT32_CLASS, mxREAL);
+    stop_times_tv_sec = mxCreateNumericMatrix (1, num_timed_iterations, mxINT32_CLASS, mxREAL);
+    stop_times_tv_nsec = mxCreateNumericMatrix (1, num_timed_iterations, mxINT32_CLASS, mxREAL);
+    start_times_tv_sec_data = mxGetData (start_times_tv_sec);
+    start_times_tv_nsec_data = mxGetData (start_times_tv_nsec);
+    stop_times_tv_sec_data = mxGetData (stop_times_tv_sec);
+    stop_times_tv_nsec_data = mxGetData (stop_times_tv_nsec);
+    for (timed_iter = 0; timed_iter < num_timed_iterations; timed_iter++)
+    {
+        start_times_tv_sec_data[timed_iter] = thread_data.times[timed_iter].start_time.tv_sec;
+        start_times_tv_nsec_data[timed_iter] = thread_data.times[timed_iter].start_time.tv_nsec;
+        stop_times_tv_sec_data[timed_iter] = thread_data.times[timed_iter].stop_time.tv_sec;
+        stop_times_tv_nsec_data[timed_iter] = thread_data.times[timed_iter].stop_time.tv_nsec;
+    }
+    mxFree (thread_data.times);
     
-    /*rc = munlockall ();
-    mxAssertS (rc == 0, "mlockall");*/
-    
+    timing_results = mxCreateStructMatrix (1, 1, 4, field_names);
+    mxSetField (timing_results, 0, "start_times_tv_sec", start_times_tv_sec);
+    mxSetField (timing_results, 0, "start_times_tv_nsec", start_times_tv_nsec);
+    mxSetField (timing_results, 0, "stop_times_tv_sec", stop_times_tv_sec);
+    mxSetField (timing_results, 0, "stop_times_tv_nsec", stop_times_tv_nsec);
+
     return timing_results;
 }

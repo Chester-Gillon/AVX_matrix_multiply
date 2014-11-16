@@ -28,6 +28,10 @@ typedef struct
 {
     struct timespec start_time;
     struct timespec stop_time;
+    SAL_ui64 start_inner_rdtsc;
+    SAL_ui64 stop_inner_rdtsc;
+    SAL_ui64 start_outer_rdtsc;
+    SAL_ui64 stop_outer_rdtsc;
 } test_times;
 
 typedef struct
@@ -39,6 +43,13 @@ typedef struct
     SAL_i32 num_blocked_cpus;
     blocking_thread_sems blocking_sems[MAX_CPUS];
 } timed_thread_data;
+
+static __inline__ SAL_ui64 read_rdtsc (void)
+{
+    unsigned long lo, hi;
+    __asm__ __volatile__ ( "rdtsc" : "=a" (lo), "=d" (hi) );
+    return( lo | (hi << 32) );
+}
 
 SAL_cf32* copy_mx_to_cf32_matrix (const mxArray *const mx_matrix, SAL_i32 *const tcols)
 {
@@ -198,9 +209,13 @@ static void *timing_thread (void *arg)
     
     for (timed_iter = 0; timed_iter < thread_data->num_timed_iterations; timed_iter++)
     {
+        thread_data->times[timed_iter].start_outer_rdtsc = read_rdtsc();
         clock_gettime (CLOCK_MONOTONIC_RAW, &thread_data->times[timed_iter].start_time);
+        thread_data->times[timed_iter].start_inner_rdtsc = read_rdtsc();
         (*thread_data->matrix_func) (thread_data->test_specific_context);
+        thread_data->times[timed_iter].stop_inner_rdtsc = read_rdtsc();
         clock_gettime (CLOCK_MONOTONIC_RAW, &thread_data->times[timed_iter].stop_time);
+        thread_data->times[timed_iter].stop_outer_rdtsc = read_rdtsc();
     }
     
     /* Tell the blocking threads to exit */
@@ -238,7 +253,20 @@ mxArray *time_matrix_multiply (void (*matrix_func) (void *),
     SAL_i32 *stop_times_tv_sec_data;
     mxArray *stop_times_tv_nsec;
     SAL_i32 *stop_times_tv_nsec_data;
-    const char *field_names[] = {"start_times_tv_sec", "start_times_tv_nsec", "stop_times_tv_sec", "stop_times_tv_nsec"};
+    mxArray *start_times_outer_rdtsc;
+    SAL_ui64 *start_times_outer_rdtsc_data;
+    mxArray *stop_times_outer_rdtsc;
+    SAL_ui64 *stop_times_outer_rdtsc_data;
+    mxArray *start_times_inner_rdtsc;
+    SAL_ui64 *start_times_inner_rdtsc_data;
+    mxArray *stop_times_inner_rdtsc;
+    SAL_ui64 *stop_times_inner_rdtsc_data;
+    const char *field_names[] =
+    {
+        "start_times_tv_sec", "start_times_tv_nsec", "stop_times_tv_sec", "stop_times_tv_nsec",
+        "start_times_outer_rdtsc", "stop_times_outer_rdtsc",
+        "start_times_inner_rdtsc", "stop_times_inner_rdtsc"
+    };
     
     rc = mlockall (MCL_CURRENT | MCL_FUTURE);
     mxAssertS (rc == 0, "mlockall");
@@ -325,24 +353,40 @@ mxArray *time_matrix_multiply (void (*matrix_func) (void *),
     start_times_tv_nsec = mxCreateNumericMatrix (1, num_timed_iterations, mxINT32_CLASS, mxREAL);
     stop_times_tv_sec = mxCreateNumericMatrix (1, num_timed_iterations, mxINT32_CLASS, mxREAL);
     stop_times_tv_nsec = mxCreateNumericMatrix (1, num_timed_iterations, mxINT32_CLASS, mxREAL);
+    start_times_inner_rdtsc = mxCreateNumericMatrix (1, num_timed_iterations, mxUINT64_CLASS, mxREAL);
+    stop_times_inner_rdtsc = mxCreateNumericMatrix (1, num_timed_iterations, mxUINT64_CLASS, mxREAL);
+    start_times_outer_rdtsc = mxCreateNumericMatrix (1, num_timed_iterations, mxUINT64_CLASS, mxREAL);
+    stop_times_outer_rdtsc = mxCreateNumericMatrix (1, num_timed_iterations, mxUINT64_CLASS, mxREAL);
     start_times_tv_sec_data = mxGetData (start_times_tv_sec);
     start_times_tv_nsec_data = mxGetData (start_times_tv_nsec);
     stop_times_tv_sec_data = mxGetData (stop_times_tv_sec);
     stop_times_tv_nsec_data = mxGetData (stop_times_tv_nsec);
+    start_times_inner_rdtsc_data = mxGetData (start_times_inner_rdtsc);
+    stop_times_inner_rdtsc_data = mxGetData (stop_times_inner_rdtsc);
+    start_times_outer_rdtsc_data = mxGetData (start_times_outer_rdtsc);
+    stop_times_outer_rdtsc_data = mxGetData (stop_times_outer_rdtsc);
     for (timed_iter = 0; timed_iter < num_timed_iterations; timed_iter++)
     {
         start_times_tv_sec_data[timed_iter] = thread_data.times[timed_iter].start_time.tv_sec;
         start_times_tv_nsec_data[timed_iter] = thread_data.times[timed_iter].start_time.tv_nsec;
         stop_times_tv_sec_data[timed_iter] = thread_data.times[timed_iter].stop_time.tv_sec;
         stop_times_tv_nsec_data[timed_iter] = thread_data.times[timed_iter].stop_time.tv_nsec;
+        start_times_inner_rdtsc_data[timed_iter] = thread_data.times[timed_iter].start_inner_rdtsc;
+        stop_times_inner_rdtsc_data[timed_iter] = thread_data.times[timed_iter].stop_inner_rdtsc;
+        start_times_outer_rdtsc_data[timed_iter] = thread_data.times[timed_iter].start_outer_rdtsc;
+        stop_times_outer_rdtsc_data[timed_iter] = thread_data.times[timed_iter].stop_outer_rdtsc;
     }
     mxFree (thread_data.times);
     
-    timing_results = mxCreateStructMatrix (1, 1, 4, field_names);
+    timing_results = mxCreateStructMatrix (1, 1, 8, field_names);
     mxSetField (timing_results, 0, "start_times_tv_sec", start_times_tv_sec);
     mxSetField (timing_results, 0, "start_times_tv_nsec", start_times_tv_nsec);
     mxSetField (timing_results, 0, "stop_times_tv_sec", stop_times_tv_sec);
     mxSetField (timing_results, 0, "stop_times_tv_nsec", stop_times_tv_nsec);
+    mxSetField (timing_results, 0, "start_times_inner_rdtsc", start_times_inner_rdtsc);
+    mxSetField (timing_results, 0, "stop_times_inner_rdtsc", stop_times_inner_rdtsc);
+    mxSetField (timing_results, 0, "start_times_outer_rdtsc", start_times_outer_rdtsc);
+    mxSetField (timing_results, 0, "stop_times_outer_rdtsc", stop_times_outer_rdtsc);
 
     return timing_results;
 }

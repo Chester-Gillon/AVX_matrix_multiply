@@ -67,7 +67,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
     context.left_matrix = copy_mx_to_cf32_matrix (left_matrix_in, &context.left_matrix_tcols);
     context.right_matrix = copy_mx_to_cf32_matrix (right_matrix_in, &context.right_matrix_tcols);
-    context.output_matrix = mxCalloc (context.nr_c * context.nc_c, sizeof(SAL_cf32));
+    context.output_matrix = mxCalloc_and_touch (context.nr_c * context.nc_c, sizeof(SAL_cf32));
     
     timing_results = time_matrix_multiply (timed_c_matrix_multiply, &context, mxGetScalar (num_timed_iterations_in),
                                            mxGetScalar (block_other_cpus_in));

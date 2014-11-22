@@ -71,8 +71,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         copy_mx_to_zf32_matrix (left_matrix_in, &context.left_matrix_tcols, &context.left_matrix);
         copy_mx_to_zf32_matrix (right_matrix_in, &context.right_matrix_tcols, &context.right_matrix);
         context.output_matrix_tcols = (context.nc_c + 7) & ~7;
-        context.output_matrix.realp = mxCalloc (context.nr_c * context.output_matrix_tcols, sizeof(float));
-        context.output_matrix.imagp = mxCalloc (context.nr_c * context.output_matrix_tcols, sizeof(float));
+        context.output_matrix.realp = mxCalloc_and_touch (context.nr_c * context.output_matrix_tcols, sizeof(float));
+        context.output_matrix.imagp = mxCalloc_and_touch (context.nr_c * context.output_matrix_tcols, sizeof(float));
 
         timing_results = time_matrix_multiply (timed_c_matrix_multiply, &context, mxGetScalar (num_timed_iterations_in),
                                                mxGetScalar (block_other_cpus_in));

@@ -12,7 +12,7 @@ L3_cache_size = str2double(result);
 
 rng('default');
 csv_file = fopen ('errors.csv','w');
-fprintf (csv_file, 'Function,nr_c,dot_product_length,Num Samples,Block Other CPUs,Max ABS difference,Min duration us,Max duration us,Median duration us,Data set fits in cache,Samples per second,Min Outer RDTSC,Max Outer RDTSC, Median Outer RDTSC,Min Inner RDTSC,Max Inner RDTSC, Median Inner RDTSC,Durations us\n');
+fprintf (csv_file, 'Function,nr_c,dot_product_length,Num Samples,Block Other CPUs,Max ABS difference,Min duration us,Max duration us,Median duration us,Data set fits in cache,Samples per second,Min Outer RDTSC,Max Outer RDTSC, Median Outer RDTSC,Min Inner RDTSC,Max Inner RDTSC, Median Inner RDTSC,Self Page Reclaims,Self Page Faults,RSS Increase,Self User Time us,Self System Time us,Thread User Time us,Thread System Time us,Durations us\n');
 num_timed_iterations = 1000;
 for nr_c = 2:20
     for dot_product_length = 2:20
@@ -57,6 +57,17 @@ for nr_c = 2:20
                             [differences_rows, differences_row_indices] = max(abs(differences));
                             [max_difference, max_difference_col] = max(differences_rows);
                             max_difference_row = differences_row_indices(max_difference_col);
+                            self_page_reclaims = timing_results.stop_self_usage.ru_minflt - timing_results.start_self_usage.ru_minflt;
+                            self_page_faults = timing_results.stop_self_usage.ru_majflt - timing_results.stop_self_usage.ru_majflt;
+                            rss_increase = timing_results.stop_self_usage.ru_maxrss - timing_results.start_self_usage.ru_maxrss;
+                            self_user_time_us = ((timing_results.stop_self_usage.ru_utime_tv_sec * 1E6) + timing_results.stop_self_usage.ru_utime_tv_usec) - ...
+                                                ((timing_results.start_self_usage.ru_utime_tv_sec * 1E6) + timing_results.start_self_usage.ru_utime_tv_usec);
+                            self_system_time_us = ((timing_results.stop_self_usage.ru_stime_tv_sec * 1E6) + timing_results.stop_self_usage.ru_stime_tv_usec) - ...
+                                                  ((timing_results.start_self_usage.ru_stime_tv_sec * 1E6) + timing_results.start_self_usage.ru_stime_tv_usec);
+                            thread_user_time_us = ((timing_results.stop_thread_usage.ru_utime_tv_sec * 1E6) + timing_results.stop_thread_usage.ru_utime_tv_usec) - ...
+                                                  ((timing_results.start_thread_usage.ru_utime_tv_sec * 1E6) + timing_results.start_thread_usage.ru_utime_tv_usec);
+                            thread_system_time_us = ((timing_results.stop_thread_usage.ru_stime_tv_sec * 1E6) + timing_results.stop_thread_usage.ru_stime_tv_usec) - ...
+                                                    ((timing_results.start_thread_usage.ru_stime_tv_sec * 1E6) + timing_results.start_thread_usage.ru_stime_tv_usec);
                             fprintf ('Max abs difference = %.8g, at row %d col %d\n', ...
                                 max_difference, max_difference_row, max_difference_col);
                             fprintf ('For max difference : matlab_output = %.8g%+.8gi, c_output = %.8g%+.8gi\n', ...
@@ -70,6 +81,8 @@ for nr_c = 2:20
                                 cache_fit, samples_per_second);
                             fprintf (csv_file,'%u,%u,%u,', min(outer_rdtsc_durations), max(outer_rdtsc_durations), median(outer_rdtsc_durations));
                             fprintf (csv_file,'%u,%u,%u,', min(inner_rdtsc_durations), max(inner_rdtsc_durations), median(inner_rdtsc_durations));
+                            fprintf (csv_file,'%u,%u,%u,', self_page_reclaims, self_page_faults, rss_increase);
+                            fprintf (csv_file,'%u,%u,%u,%u,', self_user_time_us, self_system_time_us, thread_user_time_us, thread_system_time_us);
                             if ((max(durations_us) - median(durations_us)) > 1000) && ...
                                 (max(durations_us) > (3 * median (durations_us)))
                                 fprintf (csv_file,'%.1f,',durations_us);

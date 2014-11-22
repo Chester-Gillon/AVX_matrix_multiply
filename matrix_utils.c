@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <semaphore.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 
 #include <mex.h>
 #include <matrix.h>
@@ -42,6 +43,10 @@ typedef struct
     void *test_specific_context;
     SAL_i32 num_blocked_cpus;
     blocking_thread_sems blocking_sems[MAX_CPUS];
+    struct rusage start_self_usage;
+    struct rusage start_thread_usage;
+    struct rusage stop_self_usage;
+    struct rusage stop_thread_usage;
 } timed_thread_data;
 
 static __inline__ SAL_ui64 read_rdtsc (void)
@@ -49,6 +54,26 @@ static __inline__ SAL_ui64 read_rdtsc (void)
     unsigned long lo, hi;
     __asm__ __volatile__ ( "rdtsc" : "=a" (lo), "=d" (hi) );
     return( lo | (hi << 32) );
+}
+
+void *mxCalloc_and_touch (mwSize n, mwSize size)
+{
+    char *data = mxCalloc (n, size);
+    
+    if (data != NULL)
+    {
+        const mwSize total_bytes = n * size;
+        const mwSize page_size = sysconf (_SC_PAGE_SIZE);
+        mwSize index;
+        
+        for (index = 0; index < total_bytes; index += page_size)
+        {
+            data[index] = 0;
+        }
+        data[total_bytes-1] = 0;
+    }
+    
+    return data;
 }
 
 SAL_cf32* copy_mx_to_cf32_matrix (const mxArray *const mx_matrix, SAL_i32 *const tcols)
@@ -207,6 +232,11 @@ static void *timing_thread (void *arg)
         clock_gettime (CLOCK_MONOTONIC_RAW, &stop_time);
     }
     
+    rc = getrusage (RUSAGE_SELF, &thread_data->start_self_usage);
+    mxAssertS (rc == 0, "getrusage (RUSAGE_SELF)");
+    rc = getrusage (RUSAGE_THREAD, &thread_data->start_thread_usage);
+    mxAssertS (rc == 0, "getrusage (RUSAGE_THREAD)");
+    
     for (timed_iter = 0; timed_iter < thread_data->num_timed_iterations; timed_iter++)
     {
         thread_data->times[timed_iter].start_outer_rdtsc = read_rdtsc();
@@ -218,6 +248,11 @@ static void *timing_thread (void *arg)
         thread_data->times[timed_iter].stop_outer_rdtsc = read_rdtsc();
     }
     
+    rc = getrusage (RUSAGE_SELF, &thread_data->stop_self_usage);
+    mxAssertS (rc == 0, "getrusage (RUSAGE_SELF)");
+    rc = getrusage (RUSAGE_THREAD, &thread_data->stop_thread_usage);
+    mxAssertS (rc == 0, "getrusage (RUSAGE_THREAD)");
+    
     /* Tell the blocking threads to exit */
     for (blocking_thread_index = 0; blocking_thread_index < thread_data->num_blocked_cpus; blocking_thread_index++)
     {
@@ -226,6 +261,42 @@ static void *timing_thread (void *arg)
     }
     
     return NULL;
+}
+
+static mxArray *create_long_scalar (const long value)
+{
+    mxArray *const array = mxCreateNumericMatrix (1, 1, mxINT64_CLASS, mxREAL);
+    long *const array_data = mxGetData (array);
+    
+    *array_data = value;
+    return array;
+}
+
+static mxArray *create_rusage_struct (const struct rusage *const usage)
+{
+    const char *field_names[] =
+    {
+        "ru_utime_tv_sec", "ru_utime_tv_usec", /* user time used */
+        "ru_stime_tv_sec", "ru_stime_tv_usec", /* system time used */
+        "ru_maxrss",                           /* maximum resident set size */
+        "ru_minflt",                           /* page reclaims */
+        "ru_majflt",                           /* page faults */
+        "ru_nvcsw",                            /* voluntary context switches */
+        "ru_nivcsw"                            /* involuntary context switches */
+    };
+    mxArray *const rusage_struct = mxCreateStructMatrix (1, 1, 9, field_names);
+    
+    mxSetField (rusage_struct, 0, "ru_utime_tv_sec", create_long_scalar (usage->ru_utime.tv_sec));
+    mxSetField (rusage_struct, 0, "ru_utime_tv_usec", create_long_scalar (usage->ru_utime.tv_usec));
+    mxSetField (rusage_struct, 0, "ru_stime_tv_sec", create_long_scalar (usage->ru_stime.tv_sec));
+    mxSetField (rusage_struct, 0, "ru_stime_tv_usec", create_long_scalar (usage->ru_stime.tv_usec));
+    mxSetField (rusage_struct, 0, "ru_maxrss", create_long_scalar (usage->ru_maxrss));
+    mxSetField (rusage_struct, 0, "ru_minflt", create_long_scalar (usage->ru_minflt));
+    mxSetField (rusage_struct, 0, "ru_majflt", create_long_scalar (usage->ru_majflt));
+    mxSetField (rusage_struct, 0, "ru_nvcsw", create_long_scalar (usage->ru_nvcsw));
+    mxSetField (rusage_struct, 0, "ru_nivcsw", create_long_scalar (usage->ru_nivcsw));
+    
+    return rusage_struct;
 }
 
 mxArray *time_matrix_multiply (void (*matrix_func) (void *),
@@ -265,7 +336,8 @@ mxArray *time_matrix_multiply (void (*matrix_func) (void *),
     {
         "start_times_tv_sec", "start_times_tv_nsec", "stop_times_tv_sec", "stop_times_tv_nsec",
         "start_times_outer_rdtsc", "stop_times_outer_rdtsc",
-        "start_times_inner_rdtsc", "stop_times_inner_rdtsc"
+        "start_times_inner_rdtsc", "stop_times_inner_rdtsc",
+        "start_self_usage", "start_thread_usage", "stop_self_usage", "stop_thread_usage"
     };
     
     rc = mlockall (MCL_CURRENT | MCL_FUTURE);
@@ -378,7 +450,7 @@ mxArray *time_matrix_multiply (void (*matrix_func) (void *),
     }
     mxFree (thread_data.times);
     
-    timing_results = mxCreateStructMatrix (1, 1, 8, field_names);
+    timing_results = mxCreateStructMatrix (1, 1, 12, field_names);
     mxSetField (timing_results, 0, "start_times_tv_sec", start_times_tv_sec);
     mxSetField (timing_results, 0, "start_times_tv_nsec", start_times_tv_nsec);
     mxSetField (timing_results, 0, "stop_times_tv_sec", stop_times_tv_sec);
@@ -387,6 +459,10 @@ mxArray *time_matrix_multiply (void (*matrix_func) (void *),
     mxSetField (timing_results, 0, "stop_times_inner_rdtsc", stop_times_inner_rdtsc);
     mxSetField (timing_results, 0, "start_times_outer_rdtsc", start_times_outer_rdtsc);
     mxSetField (timing_results, 0, "stop_times_outer_rdtsc", stop_times_outer_rdtsc);
+    mxSetField (timing_results, 0, "start_self_usage", create_rusage_struct (&thread_data.start_self_usage));
+    mxSetField (timing_results, 0, "start_thread_usage", create_rusage_struct (&thread_data.start_thread_usage));
+    mxSetField (timing_results, 0, "stop_self_usage", create_rusage_struct (&thread_data.stop_self_usage));
+    mxSetField (timing_results, 0, "stop_thread_usage", create_rusage_struct (&thread_data.stop_thread_usage));
 
     return timing_results;
 }

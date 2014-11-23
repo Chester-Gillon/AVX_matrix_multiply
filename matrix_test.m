@@ -18,7 +18,7 @@ for nr_c = 2:20
     for dot_product_length = 2:20
         for repeat = 1%1:5
             for block_other_cpus = 0:1
-                num_samples = 5;
+                num_samples = 14;
                 while num_samples <= 128 * 1024
                     weights = complex(rand([nr_c dot_product_length],'single') - 0.5, rand([nr_c dot_product_length],'single') - 0.5);
                     samples = complex(rand([dot_product_length num_samples],'single') - 0.5, rand([dot_product_length num_samples],'single') - 0.5);
@@ -39,7 +39,8 @@ for nr_c = 2:20
                         @c_avx_split_matrix_multiply @c_avx_interleave_matrix_multiply  ...
                         @c_opensal_matrix_multiply ...
                         @c_avx_fixed_dimension_matrix_multiply ...
-                        @c_avx_fixed_dimension_accumulate_matrix_multiply};
+                        @c_avx_fixed_dimension_accumulate_matrix_multiply ...
+                        @c_avx_fixed_dimension_stripmine_matrix_multiply};
                     for index=1:length(funcs)
                         matrix_func = funcs{index};
                         f = functions(matrix_func);
@@ -91,7 +92,7 @@ for nr_c = 2:20
                         end
                     end
                     
-                    num_samples = num_samples * 3;
+                    num_samples = num_samples * 2;
                 end
             end
         end

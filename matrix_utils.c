@@ -9,6 +9,7 @@
 #include <semaphore.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
+#include <xmmintrin.h>
 
 #include <mex.h>
 #include <matrix.h>
@@ -19,11 +20,14 @@
 
 #define MAX_CPUS 32
 
+#define CACHE_LINE_SIZE 64
+
 typedef struct
 {
     sem_t ready_sem;
     sem_t go_sem;
-} blocking_thread_sems;
+    volatile bool exit_spin_loop;
+} blocking_thread_sems __attribute__ ((aligned (CACHE_LINE_SIZE)));
 
 typedef struct
 {
@@ -42,7 +46,7 @@ typedef struct
     test_times *times;
     void *test_specific_context;
     SAL_i32 num_blocked_cpus;
-    blocking_thread_sems blocking_sems[MAX_CPUS];
+    blocking_thread_sems blocking_sems[MAX_CPUS] __attribute__ ((aligned (CACHE_LINE_SIZE)));
     struct rusage start_self_usage;
     struct rusage start_thread_usage;
     struct rusage stop_self_usage;
@@ -188,11 +192,11 @@ static void *cpu_blocking_thread (void *arg)
     
     rc = sem_wait (&blocking_sems->go_sem);
     mxAssertS (rc == 0, "sem_wait");
-    
+
     do
     {
-        rc = sem_trywait (&blocking_sems->go_sem);
-    } while (rc != 0);
+        _mm_pause ();
+    } while (!blocking_sems->exit_spin_loop);
     
     return NULL;
 }
@@ -256,8 +260,7 @@ static void *timing_thread (void *arg)
     /* Tell the blocking threads to exit */
     for (blocking_thread_index = 0; blocking_thread_index < thread_data->num_blocked_cpus; blocking_thread_index++)
     {
-        rc = sem_post (&thread_data->blocking_sems[blocking_thread_index].go_sem);
-        mxAssertS (rc == 0, "sem_post");
+        thread_data->blocking_sems[blocking_thread_index].exit_spin_loop = true;
     }
     
     return NULL;
@@ -304,7 +307,7 @@ mxArray *time_matrix_multiply (void (*matrix_func) (void *),
                                const SAL_i32 num_timed_iterations,
                                const bool block_other_cpus)
 {
-    timed_thread_data thread_data;
+    timed_thread_data thread_data __attribute__ ((aligned (CACHE_LINE_SIZE)));
     pthread_t timing_thread_id;
     pthread_t blocking_thread_ids[MAX_CPUS];
     pthread_attr_t attr;
@@ -356,6 +359,7 @@ mxArray *time_matrix_multiply (void (*matrix_func) (void *),
         mxAssertS (rc == 0, "sem_init");
         rc = sem_init (&blocking_sems->go_sem, 0, 0);
         mxAssertS (rc == 0, "sem_init");
+        blocking_sems->exit_spin_loop = false;
     }
     
     rc = pthread_attr_init (&attr);

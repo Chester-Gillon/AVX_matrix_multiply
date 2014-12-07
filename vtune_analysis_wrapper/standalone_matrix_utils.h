@@ -51,5 +51,9 @@ void time_matrix_multiply (timed_thread_data *const thread_data,
                            void *test_specific_context,
                            const SAL_i32 num_timed_iterations,
                            const bool block_other_cpus);
+void time_matrix_multiply_and_display (void (*matrix_func) (void *),
+                                       void *test_specific_context,
+                                       const SAL_i32 num_timed_iterations,
+                                       const bool block_other_cpus);
 
 #endif /* STANDALONE_MATRIX_UTILS_H_ */

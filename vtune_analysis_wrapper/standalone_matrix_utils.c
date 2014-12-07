@@ -263,3 +263,50 @@ void time_matrix_multiply (timed_thread_data *const thread_data,
     rc = pthread_attr_destroy (&attr);
     assert_str (rc == 0, "pthread_attr_destroy");
 }
+
+static int compare_times (const void *left, const void *right)
+{
+	const SAL_ui64 *left_time = (SAL_ui64 *) left;
+	const SAL_ui64 *right_time = (SAL_ui64 *) right;
+
+	if (*left_time < *right_time)
+	{
+		return -1;
+	}
+	else if (*left_time == *right_time)
+	{
+		return 0;
+	}
+	else
+	{
+		return 1;
+	}
+}
+
+void time_matrix_multiply_and_display (void (*matrix_func) (void *),
+                                       void *test_specific_context,
+                                       const SAL_i32 num_timed_iterations,
+                                       const bool block_other_cpus)
+{
+    timed_thread_data thread_data __attribute__ ((aligned (CACHE_LINE_SIZE)));
+    SAL_ui64 *sorted_times = calloc_and_touch (num_timed_iterations, sizeof(SAL_ui64));
+    SAL_i32 iteration_index;
+    const SAL_ui64 nsecs_per_sec = 1000000000;
+
+    time_matrix_multiply (&thread_data, matrix_func, test_specific_context, num_timed_iterations, block_other_cpus);
+
+    for (iteration_index = 0; iteration_index < num_timed_iterations; iteration_index++)
+    {
+    	test_times *const times = &thread_data.times[iteration_index];
+    	sorted_times[iteration_index] = (((SAL_ui64) times->stop_time.tv_sec * nsecs_per_sec) + times->stop_time.tv_nsec) -
+    			(((SAL_ui64) times->start_time.tv_sec * nsecs_per_sec) + times->start_time.tv_nsec);
+    }
+    qsort (sorted_times, num_timed_iterations, sizeof(SAL_ui64), compare_times);
+    printf ("Min duration us=%.3f Median duration us=%.3f Max duration us=%.3f\n",
+    		sorted_times[0] / 1000.0,
+    		sorted_times[num_timed_iterations / 2] / 1000.0,
+    		sorted_times[num_timed_iterations - 1]/ 1000.0);
+
+    free (sorted_times);
+    free (thread_data.times);
+}

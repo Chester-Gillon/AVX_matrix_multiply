@@ -37,7 +37,6 @@ static void timed_c_matrix_multiply (void *arg)
 
 int main (int argc, char *argv[])
 {
-    timed_thread_data thread_data __attribute__ ((aligned (CACHE_LINE_SIZE)));
 	matrix_context context;
 	SAL_i32 num_timed_iterations = 10000;
 	bool block_other_cpus = true;
@@ -51,7 +50,7 @@ int main (int argc, char *argv[])
 	calloc_row_matrix (context.nr_c, context.nc_c, context.output_matrix_rows);
 	context.cmat_mulx_func = cmat_mulx_avx_accumulate_nr_c_8_dot_product_length_8;
 
-	time_matrix_multiply (&thread_data, timed_c_matrix_multiply, &context, num_timed_iterations, block_other_cpus);
+	time_matrix_multiply_and_display (timed_c_matrix_multiply, &context, num_timed_iterations, block_other_cpus);
 
 	return 0;
 }

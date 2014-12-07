@@ -30,3 +30,7 @@
 # Editor backup files
 *~
 
+# Eclipse artifacts
+.metadata
+Debug
+Release

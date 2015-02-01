@@ -12,7 +12,7 @@ L3_cache_size = str2double(result);
 
 rng('default');
 csv_file = fopen ('errors.csv','w');
-fprintf (csv_file, 'Function,nr_c,dot_product_length,Num Samples,Block Other CPUs,Max ABS difference,Min duration us,Max duration us,Median duration us,Data set fits in cache,Samples per second,Min Outer RDTSC,Max Outer RDTSC, Median Outer RDTSC,Min Inner RDTSC,Max Inner RDTSC, Median Inner RDTSC,Self Page Reclaims,Self Page Faults,RSS Increase,Self User Time us,Self System Time us,Thread User Time us,Thread System Time us,Durations us\n');
+fprintf (csv_file, 'Function,nr_c,dot_product_length,Num Samples,Block Other CPUs,Max ABS difference,Min duration us,Max duration us,Median duration us,Data set fits in cache,Samples per second,Min Outer RDTSC,Max Outer RDTSC, Median Outer RDTSC,Min Inner RDTSC,Max Inner RDTSC, Median Inner RDTSC,Self Page Reclaims,Self Page Faults,RSS Increase,Self User Time us,Self System Time us,Thread User Time us,Thread System Time us,Count NAN,Count Infinite,Count Zero,Count Subnormal,Count Normal,Durations us\n');
 num_timed_iterations = 1000;
 for nr_c = 2:20
     for dot_product_length = 2:20
@@ -56,6 +56,7 @@ for nr_c = 2:20
                             inner_rdtsc_durations = timing_results.stop_times_inner_rdtsc - timing_results.start_times_inner_rdtsc;
                             outer_rdtsc_durations = timing_results.stop_times_outer_rdtsc - timing_results.start_times_outer_rdtsc;
                             differences = c_output - matlab_output;
+                            c_classification = fp_classify_matrix (c_output);
                             [differences_rows, differences_row_indices] = max(abs(differences));
                             [max_difference, max_difference_col] = max(differences_rows);
                             max_difference_row = differences_row_indices(max_difference_col);
@@ -85,6 +86,8 @@ for nr_c = 2:20
                             fprintf (csv_file,'%u,%u,%u,', min(inner_rdtsc_durations), max(inner_rdtsc_durations), median(inner_rdtsc_durations));
                             fprintf (csv_file,'%u,%u,%u,', self_page_reclaims, self_page_faults, rss_increase);
                             fprintf (csv_file,'%u,%u,%u,%u,', self_user_time_us, self_system_time_us, thread_user_time_us, thread_system_time_us);
+                            fprintf (csv_file,'%u,%u,%u,%u,%u,', c_classification.count_nan, c_classification.count_infinite, ...
+                                     c_classification.count_zero, c_classification.count_subnormal, c_classification.count_normal);
                             if ((max(durations_us) - median(durations_us)) > 1000) && ...
                                 (max(durations_us) > (3 * median (durations_us)))
                                 fprintf (csv_file,'%.1f,',durations_us);

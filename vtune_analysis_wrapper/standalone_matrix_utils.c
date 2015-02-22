@@ -306,6 +306,10 @@ void time_matrix_multiply_and_display (void (*matrix_func) (void *),
     		sorted_times[0] / 1000.0,
     		sorted_times[num_timed_iterations / 2] / 1000.0,
     		sorted_times[num_timed_iterations - 1]/ 1000.0);
+    printf ("Process page reclaims %ld->%ld\n",
+    		thread_data.start_self_usage.ru_minflt, thread_data.stop_self_usage.ru_minflt);
+    printf ("Thread page reclaims %ld->%ld\n",
+    		thread_data.start_thread_usage.ru_minflt, thread_data.stop_thread_usage.ru_minflt);
 
     free (sorted_times);
     free (thread_data.times);

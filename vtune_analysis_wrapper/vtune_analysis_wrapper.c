@@ -8,6 +8,7 @@
  */
 
 #include <stdbool.h>
+#include <stdlib.h>
 #include <semaphore.h>
 #include <sys/resource.h>
 
@@ -43,14 +44,22 @@ int main (int argc, char *argv[])
 
 	context.nr_c = 8;
 	context.dot_product_length = 8;
-	context.nc_c = 57344;
+	for (context.nc_c = 14; context.nc_c < (128 * 1024); context.nc_c <<= 1)
+	{
+		calloc_row_matrix (context.nr_c, context.dot_product_length, context.left_matrix_rows);
+		calloc_row_matrix (context.dot_product_length, context.nc_c, context.right_matrix_rows);
+		calloc_row_matrix (context.nr_c, context.nc_c, context.output_matrix_rows);
+		context.cmat_mulx_func = cmat_mulx_avx_accumulate_nr_c_8_dot_product_length_8;
 
-	calloc_row_matrix (context.nr_c, context.dot_product_length, context.left_matrix_rows);
-	calloc_row_matrix (context.dot_product_length, context.nc_c, context.right_matrix_rows);
-	calloc_row_matrix (context.nr_c, context.nc_c, context.output_matrix_rows);
-	context.cmat_mulx_func = cmat_mulx_avx_accumulate_nr_c_8_dot_product_length_8;
+		printf ("nr_c=%u dot_product_length=%u nc_c=%u\n",
+				context.nr_c, context.dot_product_length, context.nc_c);
+		time_matrix_multiply_and_display (timed_c_matrix_multiply, &context, num_timed_iterations, block_other_cpus);
+		printf ("\n");
 
-	time_matrix_multiply_and_display (timed_c_matrix_multiply, &context, num_timed_iterations, block_other_cpus);
+		free (context.left_matrix_rows[0]);
+		free (context.right_matrix_rows[0]);
+		free (context.output_matrix_rows[0]);
+	}
 
 	return 0;
 }

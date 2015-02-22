@@ -16,7 +16,6 @@ function set_linux_cpu_freq( min_freq_KHz, max_freq_KHz )
         cpu_dir = sprintf ('/sys/devices/system/cpu/cpu%d/cpufreq/', cpu_number);
         freq_fd = fopen ([cpu_dir 'scaling_available_frequencies'], 'r');
         if (freq_fd == -1)
-            fprintf ('Failed to open scaling_available_frequencies\n');
             break
         end
         
@@ -41,6 +40,11 @@ function set_linux_cpu_freq( min_freq_KHz, max_freq_KHz )
         % Readback to check set the expected value
         fprintf ('CPU %u using governor %s set to frequency range %d - %d KHz, currently %d KHz\n', ...
                  cpu_number, get_current_governor, get_current_min, get_current_max, get_current);
+    end
+
+    if cpu_number == 0
+        fprintf ('FError: Could not find any CPUFreq controlled CPU cores to manage\n');
+        fprintf ('Try modprobe acpi_cpufreq\n');
     end
 
     % Set the min and max frequency scaling limits for the current CPU

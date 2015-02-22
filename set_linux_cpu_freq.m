@@ -14,8 +14,9 @@ function set_linux_cpu_freq( min_freq_KHz, max_freq_KHz )
     cpu_number = 0;
     while true
         cpu_dir = sprintf ('/sys/devices/system/cpu/cpu%d/cpufreq/', cpu_number);
-        freq_fd = fopen ([cpu_dir 'scaling_available_frequencies']);
+        freq_fd = fopen ([cpu_dir 'scaling_available_frequencies'], 'r');
         if (freq_fd == -1)
+            fprintf ('Failed to open scaling_available_frequencies\n');
             break
         end
         

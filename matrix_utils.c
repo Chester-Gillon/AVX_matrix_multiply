@@ -2,6 +2,7 @@
 #define _GNU_SOURCE
 #endif
 
+#include <string.h>
 #include <pthread.h>
 #include <time.h>
 #include <unistd.h>
@@ -344,6 +345,12 @@ mxArray *time_matrix_multiply (void (*matrix_func) (void *),
     };
     
     rc = mlockall (MCL_CURRENT | MCL_FUTURE);
+    if (rc != 0)
+    {
+        mexErrMsgIdAndTxt ("time_matrix_multiply:mlockall",
+                "This can fail due to insufficient limits of the amoubnt of locked memory : errno=%d, error=%s", errno, strerror (errno));
+    }
+    
     mxAssertS (rc == 0, "mlockall");
     
     thread_data.matrix_func = matrix_func;
@@ -388,7 +395,7 @@ mxArray *time_matrix_multiply (void (*matrix_func) (void *),
     if (rc != 0)
     {
         mexErrMsgIdAndTxt ("time_matrix_multiply:pthread_create",
-                "This can fail due to insufficient permission to set rtprio : rc=%d, error=%s", rc, sys_errlist[rc]);
+                "This can fail due to insufficient permission to set rtprio : rc=%d, error=%s", rc, strerror (rc));
     }
     
     /* Start blocking threads on all CPUs not used for the timing test */

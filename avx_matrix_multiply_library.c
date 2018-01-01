@@ -238,6 +238,7 @@ SAL_i32 cmat_mulx_avx_fma_dot_product_length_8 (SAL_cf32 *A, 	/* left input matr
                                                 SAL_i32 C_tcols, 	/* output column stride */
   	                                            SAL_i32 nc_c) 	/* column count in C */
 {
+    const __m256 negate_even_sign = _mm256_set_ps (1.0f, -1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1.0f, -1.0f);
     __m256 A_c0_real[NR_C_MAX], A_c0_imag[NR_C_MAX];
     __m256 A_c1_real[NR_C_MAX], A_c1_imag[NR_C_MAX];
     __m256 A_c2_real[NR_C_MAX], A_c2_imag[NR_C_MAX];
@@ -259,21 +260,21 @@ SAL_i32 cmat_mulx_avx_fma_dot_product_length_8 (SAL_cf32 *A, 	/* left input matr
     for (r_c_index = 0; r_c_index < nr_c; r_c_index++)
     {
         A_c0_real[r_c_index] = _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 0].real);
-        A_c0_imag[r_c_index] = _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 0].imag);
+        A_c0_imag[r_c_index] = _mm256_mul_ps (negate_even_sign, _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 0].imag));
         A_c1_real[r_c_index] = _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 1].real);
-        A_c1_imag[r_c_index] = _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 1].imag);
+        A_c1_imag[r_c_index] = _mm256_mul_ps (negate_even_sign, _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 1].imag));
         A_c2_real[r_c_index] = _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 2].real);
-        A_c2_imag[r_c_index] = _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 2].imag);
+        A_c2_imag[r_c_index] = _mm256_mul_ps (negate_even_sign, _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 2].imag));
         A_c3_real[r_c_index] = _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 3].real);
-        A_c3_imag[r_c_index] = _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 3].imag);
+        A_c3_imag[r_c_index] = _mm256_mul_ps (negate_even_sign, _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 3].imag));
         A_c4_real[r_c_index] = _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 4].real);
-        A_c4_imag[r_c_index] = _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 4].imag);
+        A_c4_imag[r_c_index] = _mm256_mul_ps (negate_even_sign, _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 4].imag));
         A_c5_real[r_c_index] = _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 5].real);
-        A_c5_imag[r_c_index] = _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 5].imag);
+        A_c5_imag[r_c_index] = _mm256_mul_ps (negate_even_sign, _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 5].imag));
         A_c6_real[r_c_index] = _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 6].real);
-        A_c6_imag[r_c_index] = _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 6].imag);
+        A_c6_imag[r_c_index] = _mm256_mul_ps (negate_even_sign, _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 6].imag));
         A_c7_real[r_c_index] = _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 7].real);
-        A_c7_imag[r_c_index] = _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 7].imag);
+        A_c7_imag[r_c_index] = _mm256_mul_ps (negate_even_sign, _mm256_broadcast_ss (&A[(r_c_index * A_tcols) + 7].imag));
     }
     
     for (c_c_index = 0; c_c_index < nc_c; c_c_index += 4)
@@ -300,25 +301,25 @@ SAL_i32 cmat_mulx_avx_fma_dot_product_length_8 (SAL_cf32 *A, 	/* left input matr
             _mm256_store_ps (&C[(r_c_index * C_tcols) + c_c_index].real,
               _mm256_add_ps(
                  _mm256_add_ps (
-                     _mm256_add_ps (_mm256_fmaddsub_ps (               B_r0_real_imag, A_c0_real[r_c_index],
-                                                        _mm256_mul_ps (B_r0_imag_real, A_c0_imag[r_c_index])),
-                                    _mm256_fmaddsub_ps (               B_r1_real_imag, A_c1_real[r_c_index],
-                                                        _mm256_mul_ps (B_r1_imag_real, A_c1_imag[r_c_index]))),
-                     _mm256_add_ps (_mm256_fmaddsub_ps (               B_r2_real_imag, A_c2_real[r_c_index],
-                                                        _mm256_mul_ps (B_r2_imag_real, A_c2_imag[r_c_index])),
-                                    _mm256_fmaddsub_ps (               B_r3_real_imag, A_c3_real[r_c_index],
-                                                        _mm256_mul_ps (B_r3_imag_real, A_c3_imag[r_c_index])))),
+                     _mm256_add_ps (_mm256_fmadd_ps (               B_r0_real_imag, A_c0_real[r_c_index],
+                                                     _mm256_mul_ps (B_r0_imag_real, A_c0_imag[r_c_index])),
+                                    _mm256_fmadd_ps (               B_r1_real_imag, A_c1_real[r_c_index],
+                                                     _mm256_mul_ps (B_r1_imag_real, A_c1_imag[r_c_index]))),
+                     _mm256_add_ps (_mm256_fmadd_ps (               B_r2_real_imag, A_c2_real[r_c_index],
+                                                     _mm256_mul_ps (B_r2_imag_real, A_c2_imag[r_c_index])),
+                                    _mm256_fmadd_ps (               B_r3_real_imag, A_c3_real[r_c_index],
+                                                     _mm256_mul_ps (B_r3_imag_real, A_c3_imag[r_c_index])))),
                  _mm256_add_ps (
-                     _mm256_add_ps (_mm256_fmaddsub_ps (               B_r4_real_imag, A_c4_real[r_c_index],
-                                                        _mm256_mul_ps (B_r4_imag_real, A_c4_imag[r_c_index])),
-                                    _mm256_fmaddsub_ps (               B_r5_real_imag, A_c5_real[r_c_index],
-                                                        _mm256_mul_ps (B_r5_imag_real, A_c5_imag[r_c_index]))),
-                     _mm256_add_ps (_mm256_fmaddsub_ps (               B_r6_real_imag, A_c6_real[r_c_index],
-                                                        _mm256_mul_ps (B_r6_imag_real, A_c6_imag[r_c_index])),
-                                    _mm256_fmaddsub_ps (               B_r7_real_imag, A_c7_real[r_c_index],
-                                                        _mm256_mul_ps (B_r7_imag_real, A_c7_imag[r_c_index]))))));
+                     _mm256_add_ps (_mm256_fmadd_ps (               B_r4_real_imag, A_c4_real[r_c_index],
+                                                     _mm256_mul_ps (B_r4_imag_real, A_c4_imag[r_c_index])),
+                                    _mm256_fmadd_ps (               B_r5_real_imag, A_c5_real[r_c_index],
+                                                     _mm256_mul_ps (B_r5_imag_real, A_c5_imag[r_c_index]))),
+                     _mm256_add_ps (_mm256_fmadd_ps (               B_r6_real_imag, A_c6_real[r_c_index],
+                                                     _mm256_mul_ps (B_r6_imag_real, A_c6_imag[r_c_index])),
+                                    _mm256_fmadd_ps (               B_r7_real_imag, A_c7_real[r_c_index],
+                                                     _mm256_mul_ps (B_r7_imag_real, A_c7_imag[r_c_index]))))));
         }
     }
     
     return SAL_SUCCESS;
-}
+    }

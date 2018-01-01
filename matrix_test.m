@@ -30,15 +30,19 @@ funcs = [funcs ...
      @c_avx_fixed_dimension_accumulate_matrix_multiply ...
      @c_avx_fixed_dimension_looped_accumulate_matrix_multiply ...
      @c_avx_fixed_dimension_stripmine_matrix_multiply}];
+if cpu_supports('fma')
+    funcs = [funcs ...
+        {@c_avx_fixed_dimension_fma_accumulate_matrix_multiply}];
+end
 
 rng('default');
 csv_file = fopen ('errors.csv','w');
 fprintf (csv_file, 'Function,nr_c,dot_product_length,Num Samples,Block Other CPUs,Max ABS difference,Min duration us,Max duration us,Median duration us,Data set fits in cache,Samples per second,Min Outer RDTSC,Max Outer RDTSC, Median Outer RDTSC,Min Inner RDTSC,Max Inner RDTSC, Median Inner RDTSC,Self Page Reclaims,Self Page Faults,RSS Increase,Self User Time us,Self System Time us,Thread User Time us,Thread System Time us,Count NAN,Count Infinite,Count Zero,Count Subnormal,Count Normal,Durations us\n');
-num_timed_iterations = 1000;
+num_timed_iterations = 50;
 for nr_c = 2:20
     for dot_product_length = 2:20
         for repeat = 1%1:5
-            for block_other_cpus = 0:1
+            for block_other_cpus = 0
                 num_samples = 14;
                 while num_samples <= 128 * 1024
                     weights = complex(rand([nr_c dot_product_length],'single') - 0.5, rand([nr_c dot_product_length],'single') - 0.5);

@@ -34,3 +34,7 @@
 .metadata
 Debug
 Release
+
+# IACA raw analysis information
+/mat_mul_iaca_analysis/
+

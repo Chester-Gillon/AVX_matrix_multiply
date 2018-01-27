@@ -37,4 +37,5 @@ Release
 
 # IACA raw analysis information
 /mat_mul_iaca_analysis/
+/mat_mul_iaca_analysis.orig/
 

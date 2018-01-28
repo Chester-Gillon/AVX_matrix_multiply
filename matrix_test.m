@@ -33,8 +33,11 @@ if cpu_supports('fma')
         {@c_avx_fixed_dimension_fma_accumulate_matrix_multiply}];
 end
 
+% Build a unique filename for the results
+results_filename = [datestr(now,'YYYYddmmTHHMMSS') '_' get_cpuid_str '_matrix_test.csv'];
+
 rng('default');
-csv_file = fopen ('errors.csv','w');
+csv_file = fopen (results_filename,'w');
 fprintf (csv_file, 'Function,nr_c,dot_product_length,Num Samples,Block Other CPUs,Max ABS difference,Min duration us,Max duration us,Median duration us,Data set fits in cache,Samples per second,Min Outer RDTSC,Max Outer RDTSC, Median Outer RDTSC,Min Inner RDTSC,Max Inner RDTSC, Median Inner RDTSC,Self Page Reclaims,Self Page Faults,RSS Increase,Self User Time us,Self System Time us,Thread User Time us,Thread System Time us,Count NAN,Count Infinite,Count Zero,Count Subnormal,Count Normal,Durations us\n');
 num_timed_iterations = 50;
 for nr_c = 2:20

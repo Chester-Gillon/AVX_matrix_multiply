@@ -7,8 +7,6 @@ function generate_matrix_multiply_functions
     warn_struct = warning ('off', 'MATLAB:table:RowsAddedExistingVars');
     mat_mulx_attribs = generate_avx_fixed_dimension_matrix_multiply (mat_mulx_attribs);
     mat_mulx_attribs = generate_avx_fixed_dimension_accumulate_matrix_multiply (mat_mulx_attribs);
-    mat_mulx_attribs = generate_avx_fixed_dimension_looped_accumulate_matrix_multiply (mat_mulx_attribs);
-    mat_mulx_attribs = generate_avx_fixed_dimension_stripmine_matrix_multiply (mat_mulx_attribs);
     mat_mulx_attribs = generate_avx_fma_fixed_dimension_accumulate_matrix_multiply (mat_mulx_attribs);
     warning (warn_struct);
     writetable (mat_mulx_attribs, 'matrix_multiply_attributes.csv', 'WriteRowNames', true);

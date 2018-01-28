@@ -32,6 +32,4 @@ function compile_mex
     mex (gcc_ver, 'COPTIMFLAGS=-O3', ['-I' opensal_include], 'CFLAGS="$CFLAGS -mavx -save-temps -Wall"', '-lrt', 'c_avx_fixed_dimension_matrix_multiply.c', 'cmat_mulx_fixed_dimension_matrix_multiplies.c', 'matrix_utils.c')
     mex (gcc_ver, 'COPTIMFLAGS=-O3', ['-I' opensal_include], 'CFLAGS="$CFLAGS -mavx -save-temps -Wall"', '-lrt', 'c_avx_fixed_dimension_accumulate_matrix_multiply.c', 'cmat_mulx_fixed_dimension_accumulate_matrix_multiplies.c', 'matrix_utils.c')
     mex (gcc_ver, 'COPTIMFLAGS=-O3', ['-I' opensal_include], 'CFLAGS="$CFLAGS -mavx -mfma -save-temps -Wall"', '-lrt', 'c_avx_fixed_dimension_fma_accumulate_matrix_multiply.c', 'cmat_mulx_fixed_dimension_fma_accumulate_matrix_multiplies.c', 'matrix_utils.c')
-    mex (gcc_ver, 'COPTIMFLAGS=-O3', ['-I' opensal_include], 'CFLAGS="$CFLAGS -mavx -save-temps -Wall"', '-lrt', 'c_avx_fixed_dimension_looped_accumulate_matrix_multiply.c', 'cmat_mulx_fixed_dimension_looped_accumulate_matrix_multiplies.c', 'matrix_utils.c')
-    mex (gcc_ver, 'COPTIMFLAGS=-O3', ['-I' opensal_include], 'CFLAGS="$CFLAGS -mavx -save-temps -Wall"', '-lrt', 'c_avx_fixed_dimension_stripmine_matrix_multiply.c', 'cmat_mulx_fixed_dimension_stripmine_matrix_multiplies.c', 'matrix_utils.c')
 end

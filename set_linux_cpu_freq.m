@@ -43,8 +43,8 @@ function set_linux_cpu_freq( min_freq_KHz, max_freq_KHz )
     end
 
     if cpu_number == 0
-        fprintf ('FError: Could not find any CPUFreq controlled CPU cores to manage\n');
-        fprintf ('Try modprobe acpi_cpufreq\n');
+        fprintf ('Error: Could not find any CPUFreq controlled CPU cores to manage\n');
+        fprintf ('Try adding intel_pstate=disable to the Linux command line\n');
     end
 
     % Set the min and max frequency scaling limits for the current CPU

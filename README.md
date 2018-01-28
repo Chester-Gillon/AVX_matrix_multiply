@@ -58,6 +58,26 @@ In summary:
 
 
 
+28-Jan-2018 timing runs
+=======================
+
+These timing runs on a Kaby Lake based laptop running Ubuntu 16.04
+
+The following results were from Matlab running in the GUI, dynamic CPU frequency and no specific CPU isolation:
+20182801T150324_i5-7200U_3100MHz_matrix_test.csv
+20182801T152041_i5-7200U_600-1704MHz_matrix_test.csv
+20182801T184209_i5-7200U_3100MHz_matrix_test.csv
+
+The following results were from Matlab running from the command line in level 1, CPU frequency fixed at 1.9 GHz and no CPU isolation:
+20182801T154347_i5-7200U_1900MHz_matrix_test.csv
+20182801T160534_i5-7200U_1900MHz_matrix_test.csv
+20182801T181432_i5-7200U_1900MHz_matrix_test.csv 
+
+The command for running Matlab from the command line was:
+/usr/local/MATLAB/R2017a/bin/matlab -nojvm -nodisplay -nosplash
+
+
+
 Notes for old timing results
 ============================
 

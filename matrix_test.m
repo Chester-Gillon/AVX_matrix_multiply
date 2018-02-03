@@ -34,7 +34,7 @@ if cpu_supports('fma')
 end
 
 % Build a unique filename for the results
-results_filename = [datestr(now,'YYYYddmmTHHMMSS') '_' get_cpuid_str '_matrix_test.csv'];
+results_filename = [datestr(now,'YYYYmmddTHHMMSS') '_' get_cpuid_str '_matrix_test.csv'];
 
 rng('default');
 csv_file = fopen (results_filename,'w');

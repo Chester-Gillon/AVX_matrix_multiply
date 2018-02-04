@@ -38,7 +38,7 @@ results_filename = [datestr(now,'YYYYmmddTHHMMSS') '_' get_cpuid_str '_matrix_te
 
 rng('default');
 csv_file = fopen (results_filename,'w');
-fprintf (csv_file, 'Function,nr_c,dot_product_length,Num Samples,Block Other CPUs,Max ABS difference,Min duration us,Max duration us,Median duration us,Data set fits in cache,Samples per second,Min Outer RDTSC,Max Outer RDTSC, Median Outer RDTSC,Min Inner RDTSC,Max Inner RDTSC, Median Inner RDTSC,Self Page Reclaims,Self Page Faults,RSS Increase,Self User Time us,Self System Time us,Thread User Time us,Thread System Time us,Count NAN,Count Infinite,Count Zero,Count Subnormal,Count Normal,Durations us\n');
+fprintf (csv_file, 'Function,nr_c,dot_product_length,Num Samples,Block Other CPUs,Max ABS difference,Min duration us,Max duration us,Median duration us,Data set fits in cache,Samples per second,Min Outer RDTSC,Max Outer RDTSC, Median Outer RDTSC,Min Inner RDTSC,Max Inner RDTSC, Median Inner RDTSC,Self Page Reclaims,Self Page Faults,RSS Increase,Self User Time us,Self System Time us,Thread User Time us,Thread System Time us,Count NAN,Count Infinite,Count Zero,Count Subnormal,Count Normal,hw_instructions,hw_ref_cpu_cycles,l1d_read_access,l1d_read_miss,l1d_write_access,l1d_write_miss,Durations us\n');
 num_timed_iterations = 50;
 for nr_c = 2:20
     for dot_product_length = 2:20
@@ -107,6 +107,10 @@ for nr_c = 2:20
                             fprintf (csv_file,'%u,%u,%u,%u,', self_user_time_us, self_system_time_us, thread_user_time_us, thread_system_time_us);
                             fprintf (csv_file,'%u,%u,%u,%u,%u,', c_classification.count_nan, c_classification.count_infinite, ...
                                      c_classification.count_zero, c_classification.count_subnormal, c_classification.count_normal);
+                            fprintf (csv_file,'%u,%u,%u,%u,%u,%u,', ...
+                                timing_results.perf_events.hw_instructions, timing_results.perf_events.hw_ref_cpu_cycles, ...
+                                timing_results.perf_events.l1d_read_access, timing_results.perf_events.l1d_read_miss, ...
+                                timing_results.perf_events.l1d_write_access, timing_results.perf_events.l1d_write_miss);
                             if ((max(durations_us) - median(durations_us)) > 1000) && ...
                                 (max(durations_us) > (3 * median (durations_us)))
                                 fprintf (csv_file,'%.1f,',durations_us);

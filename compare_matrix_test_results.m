@@ -24,7 +24,11 @@ end
 function process_matrix_test_result_file (result_pathname)
     multiply_types = {'c_avx_fixed_dimension_matrix_multiply' 'c_avx_fixed_dimension_accumulate_matrix_multiply' 'c_avx_fixed_dimension_fma_accumulate_matrix_multiply'};
     data_sizes = {'L1', 'L2', 'L3', 'None'};
-    results = readtable (result_pathname,'Delimiter','comma');
+    
+    % @todo Use detectImportOptions() to set the delimiter, to prevent
+    %       rows with "Duration us" values inserting spurious rows. 
+    opts = detectImportOptions (result_pathname,'Delimiter',',');
+    results = readtable (result_pathname,opts);
     fprintf ('\nProcessing %s\n', result_pathname);
     
     % Select only results for wanted multiply function types

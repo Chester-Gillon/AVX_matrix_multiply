@@ -263,7 +263,13 @@ static void *cpu_blocking_thread (void *arg)
  *       then the perf events captured for the timing_thread were all zero, regardless
  *       of if perf_event_open() selected events for all CPUs or just the CPU used for
  *       the timing_thread. Moving the open of the perf events to the timing_thread
- *       allowed the events to be captured. */
+ *       allowed the events to be captured. 
+ *
+ * @todo With Ubuntu 4.4.0-112-generic on a Kaby Lake i5-7200U the Kernel doesn't recognise
+ *       the generic PERF_TYPE_HW_CACHE events, so have used raw configuration.
+ *       The raw configuration events capture values on a Sandby Bridge as well as a
+ *       Kaby Lake, but haven't confirmed if the most suitable configuration for both
+ *       micro-architectures. */
 static void open_perf_events (timed_thread_data *const thread_data)
 {
     struct perf_event_attr event_attr;
@@ -295,26 +301,26 @@ static void open_perf_events (timed_thread_data *const thread_data)
     }
     mxAssertS (thread_data->perf_event_fds[EVENT_HW_REF_CPU_CYCLES] != -1, "perf_event_open EVENT_HW_REF_CPU_CYCLES");
 
-    event_attr.type = PERF_TYPE_HW_CACHE;
-    event_attr.config = PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16);
+    event_attr.type = PERF_TYPE_RAW;
+    event_attr.config = 0x81D0; /* MEM_UOPS_RETIRED.ALL_LOADS */
     thread_data->perf_event_fds[EVENT_L1D_READ_ACCESS] =
             perf_event_open (&event_attr, 0, cpu, thread_data->perf_event_fds[EVENT_HW_INSTRUCTIONS], 0);
     mxAssertS (thread_data->perf_event_fds[EVENT_L1D_READ_ACCESS] != -1, "perf_event_open EVENT_L1D_READ_ACCESS");
 
-    event_attr.type = PERF_TYPE_HW_CACHE;
-    event_attr.config = PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16);
+    event_attr.type = PERF_TYPE_RAW;
+    event_attr.config = 0x0151; /* L1D.REPL */
     thread_data->perf_event_fds[EVENT_L1D_READ_MISS] =
             perf_event_open (&event_attr, 0, cpu, thread_data->perf_event_fds[EVENT_HW_INSTRUCTIONS], 0);
     mxAssertS (thread_data->perf_event_fds[EVENT_L1D_READ_MISS] != -1, "perf_event_open EVENT_L1D_READ_MISS");
 
-    event_attr.type = PERF_TYPE_HW_CACHE;
-    event_attr.config = PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_WRITE << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16);
+    event_attr.type = PERF_TYPE_RAW;
+    event_attr.config = 0x82D0; /* MEM_UOPS_RETIRED.ALL_STORES */
     thread_data->perf_event_fds[EVENT_L1D_WRITE_ACCESS] =
             perf_event_open (&event_attr, 0, cpu, thread_data->perf_event_fds[EVENT_HW_INSTRUCTIONS], 0);
     mxAssertS (thread_data->perf_event_fds[EVENT_L1D_WRITE_ACCESS] != -1, "perf_event_open EVENT_L1D_WRITE_ACCESS");
 
-    event_attr.type = PERF_TYPE_HW_CACHE;
-    event_attr.config = PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_WRITE << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16);
+    event_attr.type = PERF_TYPE_RAW;
+    event_attr.config = 0x0251; /* L1D.M_REPL */
     thread_data->perf_event_fds[EVENT_L1D_WRITE_MISS] =
             perf_event_open (&event_attr, 0, cpu, thread_data->perf_event_fds[EVENT_HW_INSTRUCTIONS], 0);
     mxAssertS (thread_data->perf_event_fds[EVENT_L1D_WRITE_MISS] != -1, "perf_event_open EVENT_L1D_WRITE_MISS");

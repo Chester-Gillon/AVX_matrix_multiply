@@ -68,7 +68,7 @@ The following results were from Matlab running in the GUI, dynamic CPU frequency
 20182801T152041_i5-7200U_600-1704MHz_matrix_test.csv
 20182801T184209_i5-7200U_3100MHz_matrix_test.csv
 
-The following results were from Matlab running from the command line in level 1, CPU frequency fixed at 1.9 GHz and no CPU isolation:
+The following results were from Matlab running from the command line in run level 1, CPU frequency fixed at 1.9 GHz and no CPU isolation:
 20182801T154347_i5-7200U_1900MHz_matrix_test.csv
 20182801T160534_i5-7200U_1900MHz_matrix_test.csv
 20182801T181432_i5-7200U_1900MHz_matrix_test.csv 
@@ -264,12 +264,50 @@ Data set fits in cache: None
  c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 23
 
 The summary is:
-a) When the data for the test fitted in either the L1, L2 or L3 caches c_avx_fixed_dimension_fma_accumulate_matrix_multiply was always the fastest
-   function.
+a) c_avx_fixed_dimension_fma_accumulate_matrix_multiply, c_avx_fixed_dimension_matrix_multiply or c_avx_fixed_dimension_fma_accumulate_matrix_multiply
+   may be the fastest on any given run/combination.
 
-b) When the data for a test didn't fit entirly in any cache, c_avx_fixed_dimension_fma_accumulate_matrix_multiply or c_avx_fixed_dimension_matrix_multiply
-   was the fastest function.
+b) c_avx_fixed_dimension_fma_accumulate_matrix_multiply is the fastest function as a percentage over all runs/combinations.
 
+
+04-Feb-2018 timing runs
+=======================
+
+These timing runs on a Kaby Lake based laptop running Ubuntu 16.04, collecting cache PMU events
+
+The following results were from Matlab running from the command line in run level 1, CPU frequency fixed at 1.9 GHz and no CPU isolation:
+20180204T203638_i5-7200U_1900MHz_matrix_test.csv
+
+>> compare_matrix_test_results
+
+Processing /home/mr_halfword/AVX_matrix_multiply/20180204T203638_i5-7200U_1900MHz_matrix_test.csv
+Data set fits in cache: L1
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 1117
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 351
+ c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 101
+ c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 5
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 2
+Data set fits in cache: L2
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 689
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 299
+ c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 63
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 21
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 10
+ c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 1
+Data set fits in cache: L3
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 655
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 373
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 115
+ c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 68
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 46
+ c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 25
+Data set fits in cache: None
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 536
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 259
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 214
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 55
+ c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 28
+ c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 21
 
 
 Notes for old timing results

@@ -10,10 +10,10 @@
 typedef struct
 {
     SAL_i32 nr_c, nc_c, dot_product_length;
-    SAL_cf32 *left_matrix;
-    SAL_cf32 *right_matrix;
-    SAL_cf32 *output_matrix;
-    SAL_i32 left_matrix_tcols, right_matrix_tcols, output_matrix_tcols;
+    SAL_cf32 *left_matrix_rows[NR_C_MAX];
+    SAL_cf32 *right_matrix_rows[NR_C_MAX];
+    SAL_cf32 *output_matrix_rows[NR_C_MAX];
+    matrix_storage left_matrix, right_matrix, output_matrix;
     SAL_i32 rc;
 } matrix_context;
 
@@ -21,9 +21,9 @@ static void timed_c_matrix_multiply (void *arg)
 {
     matrix_context *const context = (matrix_context *) arg;
 
-    context->rc = cmat_mulx_avx_fma_dot_product_length_8 (context->left_matrix, context->left_matrix_tcols,
-                                                          context->right_matrix, context->right_matrix_tcols,
-                                                          context->output_matrix, context->nr_c, context->output_matrix_tcols,
+    context->rc = cmat_mulx_avx_fma_dot_product_length_8 (context->left_matrix_rows[0], context->left_matrix.tcols,
+                                                          context->right_matrix_rows[0], context->right_matrix.tcols,
+                                                          context->output_matrix_rows[0], context->nr_c, context->output_matrix.tcols,
                                                           context->nc_c);
 }
 
@@ -68,10 +68,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
     if ((context.nr_c <= NR_C_MAX) && (context.dot_product_length == 8))
     {
-        context.left_matrix = copy_mx_to_cf32_matrix (left_matrix_in, &context.left_matrix_tcols);
-        context.right_matrix = copy_mx_to_cf32_matrix (right_matrix_in, &context.right_matrix_tcols);
-        context.output_matrix_tcols = (context.nc_c + 3) & ~3;
-        context.output_matrix = mxCalloc_and_touch (context.nr_c * context.output_matrix_tcols, sizeof(SAL_cf32));
+        copy_mx_to_cf32_matrix (left_matrix_in, &context.left_matrix, context.left_matrix_rows);
+        copy_mx_to_cf32_matrix (right_matrix_in, &context.right_matrix, context.right_matrix_rows);
+        allocate_cf32_matrix (context.nr_c, context.nc_c, &context.output_matrix, context.output_matrix_rows);
 
         timing_results = time_matrix_multiply (timed_c_matrix_multiply, &context, mxGetScalar (num_timed_iterations_in),
                                                mxGetScalar (block_other_cpus_in));
@@ -80,12 +79,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
             mexErrMsgIdAndTxt ("c_avx_fma_interleave_matrix_multiply:e", "cmat_mulx failed with rc=%u", context.rc);
         }
 
-        mx_output_matrix = mxCreateNumericMatrix (context.nr_c, context.nc_c, mxSINGLE_CLASS, mxCOMPLEX);
-        copy_cf32_to_mx_matrix (context.output_matrix, context.output_matrix_tcols, mx_output_matrix);
+        mx_output_matrix = copy_cf32_to_mx_matrix (&context.output_matrix);
     
-        mxFree (context.left_matrix);
-        mxFree (context.right_matrix);
-        mxFree (context.output_matrix);
+        free_matrix (&context.left_matrix);
+        free_matrix (&context.right_matrix);
+        free_matrix (&context.output_matrix);
     }
     else
     {

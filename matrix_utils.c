@@ -30,6 +30,12 @@
 
 #define CACHE_LINE_SIZE 64
 
+/* Align a length to a whole number of AVX vectors */
+#define IANDQ                            2
+#define COMPLEX_INTERLEAVE_AVX_ALIGNMENT 4
+#define COMPLEX_SPLIT_AVX_ALIGNMENT      8
+#define ALIGN_SIZE(value,alignment) ((((value) + (alignment) - 1) / (alignment)) * (alignment))
+
 typedef struct
 {
     sem_t ready_sem;
@@ -115,7 +121,7 @@ static __inline__ SAL_ui64 read_rdtsc (void)
     return( lo | (hi << 32) );
 }
 
-void *mxCalloc_and_touch (mwSize n, mwSize size)
+static void *mxCalloc_and_touch (mwSize n, mwSize size)
 {
     char *data = mxCalloc (n, size);
     
@@ -135,7 +141,50 @@ void *mxCalloc_and_touch (mwSize n, mwSize size)
     return data;
 }
 
-SAL_cf32* copy_mx_to_cf32_matrix (const mxArray *const mx_matrix, SAL_i32 *const tcols)
+void allocate_cf32_matrix (const mwSize num_rows, const mwSize num_cols, 
+                           matrix_storage *const matrix, SAL_cf32 **const matrix_rows)
+{
+    mwSize row;
+    SAL_cf32 *C_matrix;
+    
+    matrix->num_rows = num_rows;
+    matrix->num_cols = num_cols;
+    matrix->tcols = ALIGN_SIZE (num_cols, COMPLEX_INTERLEAVE_AVX_ALIGNMENT);
+    matrix->data = mxCalloc_and_touch (matrix->num_rows * matrix->tcols, sizeof (SAL_cf32));
+    C_matrix = matrix->data;
+    for (row = 0; row < matrix->num_rows; row++)
+    {
+        matrix_rows[row] = &C_matrix[row * matrix->tcols];
+    }
+}
+
+void free_matrix (matrix_storage *const matrix)
+{
+    mxFree (matrix->data);
+    matrix->data = NULL;
+}
+
+void allocate_zf32_matrix (const mwSize num_rows, const mwSize num_cols,
+                           matrix_storage *const matrix, SAL_zf32 *const matrix_rows)
+{
+    mwSize row;
+    float *C_matrix;
+    
+    matrix->num_rows = num_rows;
+    matrix->num_cols = num_cols;
+    matrix->tcols = ALIGN_SIZE (num_cols, COMPLEX_SPLIT_AVX_ALIGNMENT);
+    matrix->data = mxCalloc_and_touch (matrix->num_rows * matrix->tcols * IANDQ, sizeof (float));
+    C_matrix = matrix->data;
+    C_matrix = matrix->data;
+    for (row = 0; row < matrix->num_rows; row++)
+    {
+        matrix_rows[row].realp = &C_matrix[row * matrix->tcols];
+        matrix_rows[row].imagp = &C_matrix[(row * matrix->tcols) + (matrix->num_rows * matrix->tcols)];
+    }
+}
+
+void copy_mx_to_cf32_matrix (const mxArray *const mx_matrix, 
+                             matrix_storage *const matrix, SAL_cf32 **const matrix_rows)
 {
     const float *real_in = mxGetData (mx_matrix);
     const float *imag_in = mxGetImagData (mx_matrix);
@@ -146,95 +195,98 @@ SAL_cf32* copy_mx_to_cf32_matrix (const mxArray *const mx_matrix, SAL_i32 *const
     mwSize row, col;
     mwSize row_major_index, col_major_index;
     
-    /* Align each C matrix column to start on an AVX aligned boundrary */
-    *tcols = (num_cols + 3) & ~3;
-    C_matrix = mxCalloc (num_rows * *tcols, sizeof(SAL_cf32));
-    
+    allocate_cf32_matrix (num_rows, num_cols, matrix, matrix_rows);
+
+    C_matrix = matrix->data;
     for (row = 0; row < num_rows; row++)
     {
         for (col = 0; col < num_cols; col++)
         {
-            row_major_index = (row * *tcols) + col;
+            row_major_index = (row * matrix->tcols) + col;
             col_major_index = (col * num_rows) + row;
             C_matrix[row_major_index].real = real_in[col_major_index];
             C_matrix[row_major_index].imag = imag_in[col_major_index];
         }
     }
-    
-    return C_matrix;
 }
 
-void copy_cf32_to_mx_matrix (const SAL_cf32 *const C_matrix, const SAL_i32 tcols,
-                             mxArray *const mx_matrix)
+mxArray *copy_cf32_to_mx_matrix (const matrix_storage *const matrix)
 {
+    mxArray *const mx_matrix =
+            mxCreateNumericMatrix (matrix->num_rows, matrix->num_cols, mxSINGLE_CLASS, mxCOMPLEX);
     float *real_out = mxGetData (mx_matrix);
     float *imag_out = mxGetImagData (mx_matrix);
-    const mwSize *const matrix_dimensions = mxGetDimensions (mx_matrix);
-    const mwSize num_rows = matrix_dimensions[0];
-    const mwSize num_cols = matrix_dimensions[1];
     mwSize row, col;
     mwSize row_major_index, col_major_index;
+    const SAL_cf32 *const C_matrix = matrix->data;
     
-    for (row = 0; row < num_rows; row++)
+    for (row = 0; row < matrix->num_rows; row++)
     {
-        for (col = 0; col < num_cols; col++)
+        for (col = 0; col < matrix->num_cols; col++)
         {
-            row_major_index = (row * tcols) + col;
-            col_major_index = (col * num_rows) + row;
+            row_major_index = (row * matrix->tcols) + col;
+            col_major_index = (col * matrix->num_rows) + row;
             real_out[col_major_index] = C_matrix[row_major_index].real;
             imag_out[col_major_index] = C_matrix[row_major_index].imag;
         }
     }
+    
+    return mx_matrix;
 }
 
-void copy_mx_to_zf32_matrix (const mxArray *const mx_matrix, SAL_i32 *const tcols, SAL_zf32 *const C_matrix)
+void copy_mx_to_zf32_matrix (const mxArray *const mx_matrix,
+                             matrix_storage *const matrix, SAL_zf32 *const matrix_rows)
 {
     const float *real_in = mxGetData (mx_matrix);
     const float *imag_in = mxGetImagData (mx_matrix);
     const mwSize *const matrix_dimensions = mxGetDimensions (mx_matrix);
     const mwSize num_rows = matrix_dimensions[0];
     const mwSize num_cols = matrix_dimensions[1];
+    SAL_zf32 C_matrix;
     mwSize row, col;
     mwSize row_major_index, col_major_index;
     
-    /* Align each C matrix column to start on an AVX aligned boundrary */
-    *tcols = (num_cols + 7) & ~7;
-    C_matrix->realp = mxCalloc (num_rows * *tcols, sizeof(float));
-    C_matrix->imagp = mxCalloc (num_rows * *tcols, sizeof(float));
+    allocate_zf32_matrix (num_rows, num_cols, matrix, matrix_rows);
+    C_matrix.realp = matrix->data;
+    C_matrix.imagp = &C_matrix.realp[matrix->num_rows * matrix->tcols];
     
     for (row = 0; row < num_rows; row++)
     {
         for (col = 0; col < num_cols; col++)
         {
-            row_major_index = (row * *tcols) + col;
+            row_major_index = (row * matrix->tcols) + col;
             col_major_index = (col * num_rows) + row;
-            C_matrix->realp[row_major_index] = real_in[col_major_index];
-            C_matrix->imagp[row_major_index] = imag_in[col_major_index];
+            C_matrix.realp[row_major_index] = real_in[col_major_index];
+            C_matrix.imagp[row_major_index] = imag_in[col_major_index];
         }
     }
 }
 
-void copy_zf32_to_mx_matrix (const SAL_zf32 *const C_matrix, const SAL_i32 tcols,
-                             mxArray *const mx_matrix)
+mxArray *copy_zf32_to_mx_matrix (const matrix_storage *const matrix)
 {
+    mxArray *const mx_matrix =
+            mxCreateNumericMatrix (matrix->num_rows, matrix->num_cols, mxSINGLE_CLASS, mxCOMPLEX);
     float *real_out = mxGetData (mx_matrix);
     float *imag_out = mxGetImagData (mx_matrix);
-    const mwSize *const matrix_dimensions = mxGetDimensions (mx_matrix);
-    const mwSize num_rows = matrix_dimensions[0];
-    const mwSize num_cols = matrix_dimensions[1];
+    SAL_zf32 C_matrix;
     mwSize row, col;
     mwSize row_major_index, col_major_index;
+
+    C_matrix.realp = matrix->data;
+    C_matrix.imagp = &C_matrix.realp[matrix->num_rows * matrix->tcols];
     
-    for (row = 0; row < num_rows; row++)
+    for (row = 0; row < matrix->num_rows; row++)
     {
-        for (col = 0; col < num_cols; col++)
+        for (col = 0; col < matrix->num_cols; col++)
         {
-            row_major_index = (row * tcols) + col;
-            col_major_index = (col * num_rows) + row;
-            real_out[col_major_index] = C_matrix->realp[row_major_index];
-            imag_out[col_major_index] = C_matrix->imagp[row_major_index];
+            row_major_index = (row * matrix->tcols) + col;
+            col_major_index = (col * matrix->num_rows) + row;
+            real_out[col_major_index] = C_matrix.realp[row_major_index];
+            imag_out[col_major_index] = C_matrix.imagp[row_major_index];
         }
     }
+    
+    return mx_matrix;
 }
 
 static void *cpu_blocking_thread (void *arg)

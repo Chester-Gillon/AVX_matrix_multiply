@@ -22,7 +22,7 @@ static void timed_c_matrix_multiply (void *arg)
 
     context->rc = cmat_mulx (context->left_matrix_rows[0], context->left_matrix.tcols,
                              context->right_matrix_rows[0], context->right_matrix.tcols,
-                             context->output_matrix_rows[0], context->nc_c,
+                             context->output_matrix_rows[0], context->output_matrix.tcols,
                              context->nr_c, context->nc_c, context->dot_product_length, 0, 0);
 }
 
@@ -32,6 +32,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     const mxArray *const right_matrix_in = prhs[1];
     const mxArray *const num_timed_iterations_in = prhs[2];
     const mxArray *const block_other_cpus_in = prhs[3];
+    const mxArray *const alloc_method_in = prhs[4];
     const mwSize *left_matrix_dimensions;
     const mwSize *right_matrix_dimensions;
     mxArray *mx_output_matrix;
@@ -42,7 +43,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     {
         mexErrMsgIdAndTxt ("c_opensal_matrix_multiply:a", "Incorrect number of outputs");
     }
-    if (nrhs != 4)
+    if (nrhs != 5)
     {
         mexErrMsgIdAndTxt ("c_opensal_matrix_multiply:b", "Incorrect number of inputs");
     }
@@ -65,6 +66,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         mexErrMsgIdAndTxt ("c_matrix_multiply:d", "Inconsistent matrix dimensions");
     }
 
+    set_matrix_allocation_method (alloc_method_in);
     context.left_matrix_rows = mxCalloc (context.nr_c, sizeof (SAL_cf32 *));
     context.right_matrix_rows = mxCalloc (context.dot_product_length, sizeof (SAL_cf32 *));
     context.output_matrix_rows = mxCalloc (context.nr_c, sizeof (SAL_cf32 *));

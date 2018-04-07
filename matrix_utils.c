@@ -30,11 +30,32 @@
 
 #define CACHE_LINE_SIZE 64
 
+#define HUGE_PAGE_SIZE_BYTES 0x200000
+
 /* Align a length to a whole number of AVX vectors */
 #define IANDQ                            2
 #define COMPLEX_INTERLEAVE_AVX_ALIGNMENT 4
 #define COMPLEX_SPLIT_AVX_ALIGNMENT      8
 #define ALIGN_SIZE(value,alignment) ((((value) + (alignment) - 1) / (alignment)) * (alignment))
+
+/* Defines how memory for matrices is allocated */
+typedef enum
+{
+    /* The start address of each row is AVX aligned using calls to mxCalloc() with no attempt to
+     * control the underlying physical addresses. */
+    ALLOC_AVX_ALIGN,
+    /* Each matrix is allocated from huge page(s) using mmap() and the start address of each row is aligned
+     * to the L1D case size.
+     * This means that as stride through each row the accesses should be allocated in same set of the L1D cache. */
+    ALLOC_L1D_STRIDE
+} matrix_allocation_method_t;
+
+/* The memory allocation method used for all matrices, set by a call to set_matrix_allocation_method() */
+static matrix_allocation_method_t matrix_allocation_method = ALLOC_AVX_ALIGN;
+
+/* The total number of bytes which have been attempted to allocate using huge pages.
+ * Used to report diagnostics after an allocation failure. */
+static mwSize total_hugepage_allocation_bytes = 0;
 
 typedef struct
 {
@@ -121,6 +142,26 @@ static __inline__ SAL_ui64 read_rdtsc (void)
     return( lo | (hi << 32) );
 }
 
+void set_matrix_allocation_method (const mxArray *const alloc_method_in)
+{
+    char *alloc_method_str = mxArrayToString (alloc_method_in);
+    
+    if (strcmp (alloc_method_str, "avx_align") == 0)
+    {
+        matrix_allocation_method = ALLOC_AVX_ALIGN;
+    }
+    else if (strcmp (alloc_method_str, "l1d_stride") == 0)
+    {
+        matrix_allocation_method = ALLOC_L1D_STRIDE;
+    }
+    else
+    {
+        mexErrMsgIdAndTxt ("set_matrix_allocation_method", "Unknown matrix allocation method");
+    }
+    
+    mxFree (alloc_method_str);
+}
+
 static void *mxCalloc_and_touch (mwSize n, mwSize size)
 {
     char *data = mxCalloc (n, size);
@@ -141,6 +182,50 @@ static void *mxCalloc_and_touch (mwSize n, mwSize size)
     return data;
 }
 
+static void allocate_matrix_data (matrix_storage *const matrix, const mwSize avx_alignment)
+{
+    const mwSize total_rows_to_allocate = (avx_alignment == COMPLEX_INTERLEAVE_AVX_ALIGNMENT)
+        ? matrix->num_rows : (matrix->num_rows * IANDQ);
+    const mwSize element_size = (avx_alignment == COMPLEX_INTERLEAVE_AVX_ALIGNMENT)
+        ? sizeof (SAL_cf32) : sizeof (float);
+        
+    switch (matrix_allocation_method)
+    {
+    case ALLOC_AVX_ALIGN:
+        matrix->tcols = ALIGN_SIZE (matrix->num_cols, avx_alignment);
+        matrix->allocation_size_bytes = total_rows_to_allocate * matrix->tcols * element_size;
+        matrix->data = mxCalloc_and_touch (matrix->allocation_size_bytes, 1);
+        if (matrix->data == NULL)
+        {
+            mexErrMsgIdAndTxt ("allocate_matrix_data:mxCalloc",
+                    "mxCalloc failed to allocate %lu bytes for matrix", matrix->allocation_size_bytes);
+        }
+        break;
+        
+    case ALLOC_L1D_STRIDE:
+        {
+            const mwSize l1d_align_size = sysconf (_SC_LEVEL1_DCACHE_SIZE) / element_size;
+            
+            matrix->tcols = ALIGN_SIZE (matrix->num_cols, l1d_align_size);
+            matrix->allocation_size_bytes = total_rows_to_allocate * matrix->tcols * element_size;
+            matrix->allocation_size_bytes = ALIGN_SIZE (matrix->allocation_size_bytes, HUGE_PAGE_SIZE_BYTES);
+            errno = 0;
+            matrix->data = mmap (NULL, matrix->allocation_size_bytes,
+                    PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
+            if (matrix->data == MAP_FAILED)
+            {
+                mexErrMsgIdAndTxt ("allocate_matrix_data:mmap",
+                        "mmap(MAP_HUGETLB) failed after attempting to allocate a total of %lu bytes\n"
+                        "/proc/sys/vm/nr_hugepages may need to be increased : error=%s", 
+                        total_hugepage_allocation_bytes + matrix->allocation_size_bytes, strerror (errno));
+            }
+            memset (matrix->data, 0, matrix->allocation_size_bytes);
+            total_hugepage_allocation_bytes += matrix->allocation_size_bytes;
+        }
+        break;
+    }
+}
+
 void allocate_cf32_matrix (const mwSize num_rows, const mwSize num_cols, 
                            matrix_storage *const matrix, SAL_cf32 **const matrix_rows)
 {
@@ -149,8 +234,7 @@ void allocate_cf32_matrix (const mwSize num_rows, const mwSize num_cols,
     
     matrix->num_rows = num_rows;
     matrix->num_cols = num_cols;
-    matrix->tcols = ALIGN_SIZE (num_cols, COMPLEX_INTERLEAVE_AVX_ALIGNMENT);
-    matrix->data = mxCalloc_and_touch (matrix->num_rows * matrix->tcols, sizeof (SAL_cf32));
+    allocate_matrix_data (matrix, COMPLEX_INTERLEAVE_AVX_ALIGNMENT);
     C_matrix = matrix->data;
     for (row = 0; row < matrix->num_rows; row++)
     {
@@ -160,7 +244,21 @@ void allocate_cf32_matrix (const mwSize num_rows, const mwSize num_cols,
 
 void free_matrix (matrix_storage *const matrix)
 {
-    mxFree (matrix->data);
+    int rc;
+    
+    switch (matrix_allocation_method)
+    {
+    case ALLOC_AVX_ALIGN:
+        mxFree (matrix->data);
+        break;
+        
+    case ALLOC_L1D_STRIDE:
+        rc = munmap (matrix->data, matrix->allocation_size_bytes);
+        mxAssert (rc == 0, "munmap");
+        total_hugepage_allocation_bytes -= matrix->allocation_size_bytes;
+        break;
+    }
+    
     matrix->data = NULL;
 }
 
@@ -172,8 +270,7 @@ void allocate_zf32_matrix (const mwSize num_rows, const mwSize num_cols,
     
     matrix->num_rows = num_rows;
     matrix->num_cols = num_cols;
-    matrix->tcols = ALIGN_SIZE (num_cols, COMPLEX_SPLIT_AVX_ALIGNMENT);
-    matrix->data = mxCalloc_and_touch (matrix->num_rows * matrix->tcols * IANDQ, sizeof (float));
+    allocate_matrix_data (matrix, COMPLEX_SPLIT_AVX_ALIGNMENT);
     C_matrix = matrix->data;
     C_matrix = matrix->data;
     for (row = 0; row < matrix->num_rows; row++)

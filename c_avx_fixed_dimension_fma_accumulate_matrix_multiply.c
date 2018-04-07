@@ -32,6 +32,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     const mxArray *const right_matrix_in = prhs[1];
     const mxArray *const num_timed_iterations_in = prhs[2];
     const mxArray *const block_other_cpus_in = prhs[3];
+    const mxArray *const alloc_method_in = prhs[4];
     const mwSize *left_matrix_dimensions;
     const mwSize *right_matrix_dimensions;
     matrix_storage left_matrix, right_matrix, output_matrix;
@@ -43,7 +44,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     {
         mexErrMsgIdAndTxt ("c_avx_fixed_dimension_fma_accumulate_matrix_multiply:a", "Incorrect number of outputs");
     }
-    if (nrhs != 4)
+    if (nrhs != 5)
     {
         mexErrMsgIdAndTxt ("c_avx_fixed_dimension_fma_accumulate_matrix_multiply:b", "Incorrect number of inputs");
     }
@@ -75,6 +76,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     
     if (context.cmat_mulx_func != NULL)
     {
+        set_matrix_allocation_method (alloc_method_in);
         copy_mx_to_cf32_matrix (left_matrix_in, &left_matrix, context.left_matrix_rows);
         copy_mx_to_cf32_matrix (right_matrix_in, &right_matrix, context.right_matrix_rows);
         allocate_cf32_matrix (context.nr_c, context.nc_c, &output_matrix, context.output_matrix_rows);

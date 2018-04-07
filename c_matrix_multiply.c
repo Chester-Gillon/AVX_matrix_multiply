@@ -8,35 +8,32 @@
 
 typedef struct
 {
-    const float *left_matrix_real, *left_matrix_imag;
-    const float *right_matrix_real, *right_matrix_imag;
-    float *output_matrix_real, *output_matrix_imag;
+    matrix_storage left_matrix, right_matrix, output_matrix;
+    SAL_zf32 *left_matrix_rows;
+    SAL_zf32 *right_matrix_rows;
+    SAL_zf32 *output_matrix_rows;
     SAL_i32 nr_c, nc_c, dot_product_length;
 } matrix_context;
 
 static void timed_c_matrix_multiply (void *arg)
 {
     matrix_context *const context = (matrix_context *) arg;
-    mwSize left_matrix_index, right_matrix_index, output_matrix_index;
     mwSize r_c, c_c, dot_product;
     
     for (r_c = 0; r_c < context->nr_c; r_c++)
     {
         for (c_c = 0; c_c < context->nc_c; c_c++)
         {
-            output_matrix_index = r_c + (c_c * context->nr_c);
-            context->output_matrix_real[output_matrix_index] = 0.0f;
-            context->output_matrix_imag[output_matrix_index] = 0.0f;
+            context->output_matrix_rows[r_c].realp[c_c] = 0.0f;
+            context->output_matrix_rows[r_c].imagp[c_c] = 0.0f;
             for (dot_product = 0; dot_product < context->dot_product_length; dot_product++)
             {
-                left_matrix_index = r_c + (dot_product * context->nr_c);
-                right_matrix_index = dot_product + (c_c * context->dot_product_length);
-                context->output_matrix_real[output_matrix_index] +=
-                        (context->right_matrix_real[right_matrix_index] * context->left_matrix_real[left_matrix_index]) -
-                        (context->right_matrix_imag[right_matrix_index] * context->left_matrix_imag[left_matrix_index]);
-                context->output_matrix_imag[output_matrix_index] +=
-                        (context->right_matrix_imag[right_matrix_index] * context->left_matrix_real[left_matrix_index]) +
-                        (context->right_matrix_real[right_matrix_index] * context->left_matrix_imag[left_matrix_index]);
+                context->output_matrix_rows[r_c].realp[c_c] +=
+                        (context->right_matrix_rows[dot_product].realp[c_c] * context->left_matrix_rows[r_c].realp[dot_product]) -
+                        (context->right_matrix_rows[dot_product].imagp[c_c] * context->left_matrix_rows[r_c].imagp[dot_product]);
+                context->output_matrix_rows[r_c].imagp[c_c] +=
+                        (context->right_matrix_rows[dot_product].imagp[c_c] * context->left_matrix_rows[r_c].realp[dot_product]) +
+                        (context->right_matrix_rows[dot_product].realp[c_c] * context->left_matrix_rows[r_c].imagp[dot_product]);
             }
         }
     }
@@ -48,16 +45,18 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     const mxArray *const right_matrix_in = prhs[1];
     const mxArray *const num_timed_iterations_in = prhs[2];
     const mxArray *const block_other_cpus_in = prhs[3];
+    const mxArray *const alloc_method_in = prhs[4];
     const mwSize *left_matrix_dimensions;
     const mwSize *right_matrix_dimensions;
-    mxArray *output_matrix;
+    mxArray *mx_output_matrix;
+    mxArray *timing_results;
     matrix_context context;
 
     if (nlhs != 2)
     {
         mexErrMsgIdAndTxt ("c_matrix_multiply:a", "Incorrect number of outputs");
     }
-    if (nrhs != 4)
+    if (nrhs != 5)
     {
         mexErrMsgIdAndTxt ("c_matrix_multiply:b", "Incorrect number of inputs");
     }
@@ -70,6 +69,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         mexErrMsgIdAndTxt ("c_matrix_multiply:c", "Inputs are not complex single 2D arrays");
     }
     
+    set_matrix_allocation_method (alloc_method_in);
     left_matrix_dimensions = mxGetDimensions (left_matrix_in);
     right_matrix_dimensions = mxGetDimensions (right_matrix_in);
     context.nr_c = left_matrix_dimensions[0];
@@ -80,16 +80,24 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         mexErrMsgIdAndTxt ("c_matrix_multiply:d", "Inconsistent matrix dimensions");
     }
     
-    output_matrix = mxCreateNumericMatrix (context.nr_c, context.nc_c, mxSINGLE_CLASS, mxCOMPLEX);
-    plhs[0] = output_matrix;
+    context.left_matrix_rows = mxCalloc (context.nr_c, sizeof (SAL_zf32));
+    context.right_matrix_rows = mxCalloc (context.dot_product_length, sizeof (SAL_zf32));
+    context.output_matrix_rows = mxCalloc (context.nr_c, sizeof (SAL_zf32));
+    copy_mx_to_zf32_matrix (left_matrix_in, &context.left_matrix, context.left_matrix_rows);
+    copy_mx_to_zf32_matrix (right_matrix_in, &context.right_matrix, context.right_matrix_rows);
+    allocate_zf32_matrix (context.nr_c, context.nc_c, &context.output_matrix, context.output_matrix_rows);
     
-    context.left_matrix_real = mxGetData (left_matrix_in);
-    context.left_matrix_imag = mxGetImagData (left_matrix_in);
-    context.right_matrix_real = mxGetData (right_matrix_in);
-    context.right_matrix_imag = mxGetImagData (right_matrix_in);
-    context.output_matrix_real = mxGetData (output_matrix);
-    context.output_matrix_imag = mxGetImagData (output_matrix);
+    timing_results = time_matrix_multiply (timed_c_matrix_multiply, &context, mxGetScalar (num_timed_iterations_in),
+                                           mxGetScalar (block_other_cpus_in));
+
+    mx_output_matrix = copy_zf32_to_mx_matrix (&context.output_matrix);
+    plhs[0] = mx_output_matrix;
+    plhs[1] = timing_results;
     
-    plhs[1] = time_matrix_multiply (timed_c_matrix_multiply, &context, mxGetScalar (num_timed_iterations_in),
-                                    mxGetScalar (block_other_cpus_in));
+    free_matrix (&context.left_matrix);
+    free_matrix (&context.right_matrix);
+    free_matrix (&context.output_matrix);
+    mxFree (context.left_matrix_rows);
+    mxFree (context.right_matrix_rows);
+    mxFree (context.output_matrix_rows);
 }

@@ -11,8 +11,11 @@ typedef struct
     SAL_i32 tcols;
     /* Points to the start of the allocated data for the matrix */
     void *data;
+    /* The number of bytes allocated for data */
+    mwSize allocation_size_bytes;
 } matrix_storage;
 
+void set_matrix_allocation_method (const mxArray *const alloc_method_in);
 void allocate_cf32_matrix (const mwSize num_rows, const mwSize num_cols, 
                            matrix_storage *const matrix, SAL_cf32 **const matrix_rows);
 void allocate_zf32_matrix (const mwSize num_rows, const mwSize num_cols,

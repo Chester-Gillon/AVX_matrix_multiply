@@ -74,20 +74,30 @@ typedef struct
     SAL_ui64 stop_outer_rdtsc;
 } test_times;
 
-/* The hardware perf events captured as a group for the running process */
+/* The hardware perf events captured as a group for the running process.
+   This gives the number of different events to attempt to configure.
+   The actual events which can be configured depends upon:
+   1. The events supported by the processor. E.g. EVENT_L1D_WRITE_MISS is supported
+      on a Sandy Bridge but not Haswell.
+   2. If the linux Kernel PMU driver has support for the processor events.
+   3. The maximum number of events which can be selected to count as a group.
+      Disabling hyper-threading can double the number of event counters. */
 typedef enum
 {
     /* Built in events */
     EVENT_HW_INSTRUCTIONS,
     EVENT_HW_REF_CPU_CYCLES,
-    /* Select 4 events for L1D cache.
-     * 4 is the maximum number of events which can be selected to count as a group when
-     * hyper-threading is enabled.
-     * If hyper-threading is disabled, the number of event counters doubles. */
+    /* L1D cache events */
     EVENT_L1D_READ_ACCESS,
     EVENT_L1D_READ_MISS,
     EVENT_L1D_WRITE_ACCESS,
     EVENT_L1D_WRITE_MISS,
+    /* Last Level Cache events.
+     * Misses are given preference are more likely to a sign of a performance bottleneck. */
+    EVENT_LLC_READ_MISS,
+    EVENT_LLC_WRITE_MISS,
+    EVENT_LLC_READ_ACCESS,
+    EVENT_LLC_WRITE_ACCESS,
     /* For sizing arrays */
     NUM_HW_PERF_EVENTS
 } hw_perf_events;
@@ -120,7 +130,9 @@ typedef struct
     struct rusage start_thread_usage;
     struct rusage stop_self_usage;
     struct rusage stop_thread_usage;
+    /* The file descriptors to read the events, or -1 if the event in not configured */
     int perf_event_fds[NUM_HW_PERF_EVENTS];
+    int num_configured_events;
     SAL_ui64 perf_event_values[NUM_HW_PERF_EVENTS];
 } timed_thread_data;
 
@@ -412,67 +424,119 @@ static void *cpu_blocking_thread (void *arg)
  *       then the perf events captured for the timing_thread were all zero, regardless
  *       of if perf_event_open() selected events for all CPUs or just the CPU used for
  *       the timing_thread. Moving the open of the perf events to the timing_thread
- *       allowed the events to be captured. 
- *
- * @todo With Ubuntu 4.4.0-112-generic on a Kaby Lake i5-7200U the Kernel doesn't recognise
- *       the generic PERF_TYPE_HW_CACHE events, so have used raw configuration.
- *       The raw configuration events capture values on a Sandby Bridge as well as a
- *       Kaby Lake, but haven't confirmed if the most suitable configuration for both
- *       micro-architectures. */
+ *       allowed the events to be captured. */
 static void open_perf_events (timed_thread_data *const thread_data)
 {
+    const struct
+    {
+        __u32 type;
+        __u64 config;
+    } event_configs[NUM_HW_PERF_EVENTS] =
+    {
+        [EVENT_HW_INSTRUCTIONS] =
+        {
+            .type = PERF_TYPE_HARDWARE,
+            .config = PERF_COUNT_HW_INSTRUCTIONS
+        },
+        [EVENT_HW_REF_CPU_CYCLES] =
+        {
+            .type = PERF_TYPE_HARDWARE,
+            .config = PERF_COUNT_HW_REF_CPU_CYCLES
+        },
+        [EVENT_L1D_READ_ACCESS] = 
+        {
+            .type = PERF_TYPE_HW_CACHE,
+            .config = PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16)
+        },
+        [EVENT_L1D_READ_MISS] =
+        {
+            .type = PERF_TYPE_HW_CACHE,
+            .config = PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16)
+        },
+        [EVENT_L1D_WRITE_ACCESS] =
+        {
+            .type = PERF_TYPE_HW_CACHE,
+            .config = PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_WRITE << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16)
+        },
+        [EVENT_L1D_WRITE_MISS] =
+        {
+            .type = PERF_TYPE_HW_CACHE,
+            .config = PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_WRITE << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16)
+        },
+        [EVENT_LLC_READ_ACCESS] =
+        {
+            .type = PERF_TYPE_HW_CACHE,
+            .config = PERF_COUNT_HW_CACHE_LL | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16)
+        },
+        [EVENT_LLC_READ_MISS] =
+        {
+            .type = PERF_TYPE_HW_CACHE,
+            .config = PERF_COUNT_HW_CACHE_LL | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16)
+        },
+        [EVENT_LLC_WRITE_ACCESS] =
+        {
+            .type = PERF_TYPE_HW_CACHE,
+            .config = PERF_COUNT_HW_CACHE_LL | (PERF_COUNT_HW_CACHE_OP_WRITE << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16)
+        },
+        [EVENT_LLC_WRITE_MISS] =
+        {
+            .type = PERF_TYPE_HW_CACHE,
+            .config = PERF_COUNT_HW_CACHE_LL | (PERF_COUNT_HW_CACHE_OP_WRITE << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16)
+        }
+    };
+    hw_perf_events event_index;
     struct perf_event_attr event_attr;
+    bool event_limit_reached;
     const int cpu = sched_getcpu ();
 
     /* Open the group leader event */
+    event_index = EVENT_HW_INSTRUCTIONS;
     memset (&event_attr, 0, sizeof (event_attr));
-    event_attr.type = PERF_TYPE_HARDWARE;
+    event_attr.type = event_configs[event_index].type;
     event_attr.size = sizeof (event_attr);
-    event_attr.config = PERF_COUNT_HW_INSTRUCTIONS;
+    event_attr.config = event_configs[event_index].config;
     event_attr.read_format = PERF_FORMAT_TOTAL_TIME_ENABLED | PERF_FORMAT_TOTAL_TIME_RUNNING | PERF_FORMAT_ID | PERF_FORMAT_GROUP;
     event_attr.disabled = 1;
     event_attr.pinned = 1;
-    thread_data->perf_event_fds[EVENT_HW_INSTRUCTIONS] =
+    thread_data->perf_event_fds[event_index] =
             perf_event_open (&event_attr, 0, cpu, -1, 0);
-    mxAssertS (thread_data->perf_event_fds[EVENT_HW_INSTRUCTIONS] != -1, "perf_event_open EVENT_HW_INSTRUCTIONS");
+    mxAssertS (thread_data->perf_event_fds[event_index] != -1, "perf_event_open EVENT_HW_INSTRUCTIONS");
+    thread_data->num_configured_events = 1;
 
-    /* Open the other events in the group */
-    event_attr.disabled = 0;
-    event_attr.pinned = 0;
-    event_attr.type = PERF_TYPE_HARDWARE;
-    event_attr.config = PERF_COUNT_HW_REF_CPU_CYCLES;
-    thread_data->perf_event_fds[EVENT_HW_REF_CPU_CYCLES] =
-            perf_event_open (&event_attr, 0, cpu, thread_data->perf_event_fds[EVENT_HW_INSTRUCTIONS], 0);
-    if (thread_data->perf_event_fds[EVENT_HW_REF_CPU_CYCLES] == -1)
+    /* Attempt to open the other events in the group.
+       Once the errno indicates the limit on the number of events in the group is reached,
+       stop attempting to configure events. This gives priority to the first events which
+       are configured. */
+    event_limit_reached = false;
+    for (event_index = 1; event_index < NUM_HW_PERF_EVENTS; event_index++)
     {
-        mexErrMsgIdAndTxt ("time_matrix_multiply:perf_event_open",
-                "EVENT_HW_REF_CPU_CYCLES errno=%d, error=%s", errno, strerror (errno));
-    }
-    mxAssertS (thread_data->perf_event_fds[EVENT_HW_REF_CPU_CYCLES] != -1, "perf_event_open EVENT_HW_REF_CPU_CYCLES");
-
-    event_attr.type = PERF_TYPE_RAW;
-    event_attr.config = 0x81D0; /* MEM_UOPS_RETIRED.ALL_LOADS */
-    thread_data->perf_event_fds[EVENT_L1D_READ_ACCESS] =
-            perf_event_open (&event_attr, 0, cpu, thread_data->perf_event_fds[EVENT_HW_INSTRUCTIONS], 0);
-    mxAssertS (thread_data->perf_event_fds[EVENT_L1D_READ_ACCESS] != -1, "perf_event_open EVENT_L1D_READ_ACCESS");
-
-    event_attr.type = PERF_TYPE_RAW;
-    event_attr.config = 0x0151; /* L1D.REPL */
-    thread_data->perf_event_fds[EVENT_L1D_READ_MISS] =
-            perf_event_open (&event_attr, 0, cpu, thread_data->perf_event_fds[EVENT_HW_INSTRUCTIONS], 0);
-    mxAssertS (thread_data->perf_event_fds[EVENT_L1D_READ_MISS] != -1, "perf_event_open EVENT_L1D_READ_MISS");
-
-    event_attr.type = PERF_TYPE_RAW;
-    event_attr.config = 0x82D0; /* MEM_UOPS_RETIRED.ALL_STORES */
-    thread_data->perf_event_fds[EVENT_L1D_WRITE_ACCESS] =
-            perf_event_open (&event_attr, 0, cpu, thread_data->perf_event_fds[EVENT_HW_INSTRUCTIONS], 0);
-    mxAssertS (thread_data->perf_event_fds[EVENT_L1D_WRITE_ACCESS] != -1, "perf_event_open EVENT_L1D_WRITE_ACCESS");
-
-    event_attr.type = PERF_TYPE_RAW;
-    event_attr.config = 0x0251; /* L1D.M_REPL */
-    thread_data->perf_event_fds[EVENT_L1D_WRITE_MISS] =
-            perf_event_open (&event_attr, 0, cpu, thread_data->perf_event_fds[EVENT_HW_INSTRUCTIONS], 0);
-    mxAssertS (thread_data->perf_event_fds[EVENT_L1D_WRITE_MISS] != -1, "perf_event_open EVENT_L1D_WRITE_MISS");
+        if (event_limit_reached)
+        {
+            thread_data->perf_event_fds[event_index] = -1;
+        }
+        else
+        {
+            event_attr.disabled = 0;
+            event_attr.pinned = 0;
+            event_attr.type = event_configs[event_index].type;
+            event_attr.config = event_configs[event_index].config;
+            errno = 0;
+            thread_data->perf_event_fds[event_index] =
+                    perf_event_open (&event_attr, 0, cpu, thread_data->perf_event_fds[EVENT_HW_INSTRUCTIONS], 0);
+            if (thread_data->perf_event_fds[event_index] != -1)
+            {
+                thread_data->num_configured_events++;
+            }
+            else if ((errno == ENOSPC) || (errno == EINVAL))
+            {
+                event_limit_reached = true;
+            }
+            else
+            {
+                /* Event is not supported by the processor */
+            }
+        }
+    }        
 }    
 
 /* Close the perf event file descriptors */
@@ -483,8 +547,11 @@ static void close_perf_events (timed_thread_data *const thread_data)
 
     for (event_index = 0; event_index < NUM_HW_PERF_EVENTS; event_index++)
     {
-        rc = close (thread_data->perf_event_fds[event_index]);
-        mxAssertS (rc == 0, "close perf_event_fds");
+        if (thread_data->perf_event_fds[event_index] != -1)
+        {
+            rc = close (thread_data->perf_event_fds[event_index]);
+            mxAssertS (rc == 0, "close perf_event_fds");
+        }
     }
 }
 
@@ -504,6 +571,7 @@ static void disable_and_read_perf_events (timed_thread_data *const thread_data)
 {
     int rc;
     hw_events_group_format perf_group;
+    const size_t configured_group_size = offsetof (hw_events_group_format, events[thread_data->num_configured_events]);
     ssize_t bytes_read;
     hw_perf_events event_index;
     hw_perf_events id_index;
@@ -513,28 +581,31 @@ static void disable_and_read_perf_events (timed_thread_data *const thread_data)
     rc = ioctl (thread_data->perf_event_fds[0], PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP);
     mxAssertS (rc == 0, "PERF_EVENT_IOC_DISABLE");
     
-    bytes_read = read (thread_data->perf_event_fds[0], &perf_group, sizeof (perf_group));
-    mxAssertS (bytes_read == sizeof (perf_group), "read (hw_events_group_format)");
-    mxAssertS (perf_group.num_events == NUM_HW_PERF_EVENTS, "perf_group.num_events");
+    bytes_read = read (thread_data->perf_event_fds[0], &perf_group, configured_group_size);
+    mxAssertS (bytes_read == configured_group_size, "read (hw_events_group_format)");
+    mxAssertS (perf_group.num_events == thread_data->num_configured_events, "perf_group.num_events");
 
     /* Extract the event values from the group based upon event IDs, rather than
      * assuming the perf_group.events[] array is in the same order as the 
      * hw_perf_events enumeration. */
     for (event_index = 0; event_index < NUM_HW_PERF_EVENTS; event_index++)
     {
-        rc = ioctl (thread_data->perf_event_fds[event_index], PERF_EVENT_IOC_ID, &event_id);
-        mxAssertS (rc == 0, "PERF_EVENT_IOC_ID");
-        
-        id_found = false;
-        for (id_index = 0; !id_found && (id_index < NUM_HW_PERF_EVENTS); id_index++)
+        if (thread_data->perf_event_fds[event_index] != -1)
         {
-            if (perf_group.events[id_index].id == event_id)
+            rc = ioctl (thread_data->perf_event_fds[event_index], PERF_EVENT_IOC_ID, &event_id);
+            mxAssertS (rc == 0, "PERF_EVENT_IOC_ID");
+            
+            id_found = false;
+            for (id_index = 0; !id_found && (id_index < thread_data->num_configured_events); id_index++)
             {
-                thread_data->perf_event_values[event_index] = perf_group.events[id_index].value;
-                id_found = true;
+                if (perf_group.events[id_index].id == event_id)
+                {
+                    thread_data->perf_event_values[event_index] = perf_group.events[id_index].value;
+                    id_found = true;
+                }
             }
+            mxAssertS (id_found, "perf event_id not found");
         }
-        mxAssertS (id_found, "perf event_id not found");
     }
 }
 
@@ -656,29 +727,32 @@ static mxArray *create_rusage_struct (const struct rusage *const usage)
 
 static mxArray *create_perf_events_struct (const timed_thread_data *const thread_data)
 {
-    const char *field_names[] =
+    const char *field_names[NUM_HW_PERF_EVENTS] =
     {
-        "hw_instructions",
-        "hw_ref_cpu_cycles",
-        "l1d_read_access",
-        "l1d_read_miss",
-        "l1d_write_access",
-        "l1d_write_miss"
+        [EVENT_HW_INSTRUCTIONS  ] = "hw_instructions",
+        [EVENT_HW_REF_CPU_CYCLES] = "hw_ref_cpu_cycles",
+        [EVENT_L1D_READ_ACCESS  ] = "l1d_read_access",
+        [EVENT_L1D_READ_MISS    ] = "l1d_read_miss",
+        [EVENT_L1D_WRITE_ACCESS ] = "l1d_write_access",
+        [EVENT_L1D_WRITE_MISS   ] = "l1d_write_miss",
+        [EVENT_LLC_READ_ACCESS  ] = "llc_read_access",
+        [EVENT_LLC_READ_MISS    ] = "llc_read_miss",
+        [EVENT_LLC_WRITE_ACCESS ] = "llc_write_access",
+        [EVENT_LLC_WRITE_MISS   ] = "llc_write_miss"
     };
-    mxArray *const perf_events_struct = mxCreateStructMatrix (1, 1, 6, field_names);
+    mxArray *const perf_events_struct = mxCreateStructMatrix (1, 1, 0, NULL);
+    hw_perf_events event_index;
 
-    mxSetField (perf_events_struct, 0, "hw_instructions",
-            create_ulong_scalar (thread_data->perf_event_values[EVENT_HW_INSTRUCTIONS]));
-    mxSetField (perf_events_struct, 0, "hw_ref_cpu_cycles",
-            create_ulong_scalar (thread_data->perf_event_values[EVENT_HW_REF_CPU_CYCLES]));
-    mxSetField (perf_events_struct, 0, "l1d_read_access",
-            create_ulong_scalar (thread_data->perf_event_values[EVENT_L1D_READ_ACCESS]));
-    mxSetField (perf_events_struct, 0, "l1d_read_miss",
-            create_ulong_scalar (thread_data->perf_event_values[EVENT_L1D_READ_MISS]));
-    mxSetField (perf_events_struct, 0, "l1d_write_access",
-            create_ulong_scalar (thread_data->perf_event_values[EVENT_L1D_WRITE_ACCESS]));
-    mxSetField (perf_events_struct, 0, "l1d_write_miss",
-            create_ulong_scalar (thread_data->perf_event_values[EVENT_L1D_WRITE_MISS]));
+    for (event_index = 0; event_index < NUM_HW_PERF_EVENTS; event_index++)
+    {
+        if (thread_data->perf_event_fds[event_index] != -1)
+        {
+            const int field_number = mxAddField (perf_events_struct, field_names[event_index]);
+            
+            mxSetFieldByNumber (perf_events_struct, 0, field_number,
+                    create_ulong_scalar (thread_data->perf_event_values[event_index]));
+        }
+    }
             
     return perf_events_struct;
 }
@@ -771,7 +845,7 @@ mxArray *time_matrix_multiply (void (*matrix_func) (void *),
     CPU_SET (num_cpus - 1, &cpu_set);
     rc = pthread_attr_setaffinity_np (&attr, sizeof(cpu_set), &cpu_set);
     mxAssertS (rc == 0, "pthread_attr_setaffinity_np");
-    
+
     rc = pthread_create (&timing_thread_id, &attr, timing_thread, &thread_data);
     if (rc != 0)
     {

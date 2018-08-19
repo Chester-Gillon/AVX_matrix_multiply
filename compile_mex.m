@@ -5,15 +5,22 @@
 %   viewed
 function compile_mex
     % Ubuntu 16.04 LTS has gcc 5.4.0 installed by default.
-    % As of Matlab 2017a the version currently supported by MEX is '4.9.x'.
-    % Therefore, if gcc-4.9 is installed use that specific version.
+    % As of Matlab 2018a the version currently supported by MEX is '6.3.x'.
+    % Therefore, if gcc-6.3 is installed use that specific version.
     %
-    % The following was done to install gcc-4.9:
-    %  sudo apt-get install gcc-4.9
-    %  sudo apt-get install g++-4.9
+    % The following was done to install gcc-6.3:
+    %  sudo add-apt-repository ppa:jonathonf/gcc-6.3
+    %  sudo apt-get update
+    %  sudo apt-get install gcc-6 g++-6
     %
-    % g++-4.9 is installed since mex adds stdc++ to the list of libraries.
-    mex_preferred_gcc_version='/usr/bin/gcc-4.9';
+    % Notes:
+    % a) g++-6 is installed since mex adds stdc++ to the list of libraries.
+    % b) Had to install 6.3 from the Personal Package Archive at
+    %    https://launchpad.net/~jonathonf/+archive/ubuntu/gcc-6.3 since
+    %    there is no offical Unbuntu package for gcc 6.3
+    % c) http://ppa.launchpad.net/ubuntu-toolchain-r/test/ubuntu contains a
+    %    conflicting package also named gcc-6 which is for gcc 6.4.
+    mex_preferred_gcc_version='/usr/bin/gcc-6';
     if exist (mex_preferred_gcc_version,'file') == 2
         gcc_ver = ['GCC=' mex_preferred_gcc_version];
     else

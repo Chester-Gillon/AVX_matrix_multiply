@@ -15,15 +15,27 @@ function cpuid_str = get_cpuid_str
             field_values = strtrim(scanned{1,2});
             model_name_idx = find (strcmp(field_names,'model name'),1);
             if ~isempty(model_name_idx)
-                % Find the string before CPU in the model name, which is
-                % assumed to the the CPU name
-               model_fields = textscan(field_values{model_name_idx},'%s');
-               if ~isempty(model_fields{1})
-                   cpu_idx = find (strcmp(model_fields{1},'CPU'));
-                   if ~isempty(cpu_idx)
-                       cpuid_str = model_fields{1}{cpu_idx-1};
-                   end
-               end
+                % Extract the unique names from the model name, ignoring
+                % any brandnames and the trailing maximum frequency.
+                model_fields = textscan(field_values{model_name_idx},'%s');
+                for model_idx = 1:length(model_fields{1})
+                    model_field = model_fields{1}{model_idx};
+                    if strcmp (model_field, '@')
+                        % Stop when reached the token for the maximum
+                        % frequency.
+                        break;
+                    elseif endsWith (model_field, '(R)') || ...
+                            endsWith (model_field, '(TM)') || ...
+                            endsWith (model_field, 'CPU')
+                        % Skip brand name fields
+                    else
+                        if isempty (cpuid_str)
+                            cpuid_str = model_field;
+                        else
+                            cpuid_str = strcat (cpuid_str, '_', model_field);
+                        end
+                    end
+                end
             end
             
             cpu_freq_idxs = find (strcmp(field_names,'cpu MHz'));

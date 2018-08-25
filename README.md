@@ -1,10 +1,10 @@
 AVX_matrix_multiply
 ===================
 
-Experiment for generating optimised AVX matrix multiply functions.
+Experiment for generating optimised AVX and FMA matrix multiply functions.
 The data types are 32-bit float complex-split and complex-interleave format.
 
-The software has been developed using Matlab R2017A mex under Linux 64-bit on Ubuntu 16.04, using gcc 4.9.
+The software has been developed using Matlab R2018A mex under Linux 64-bit on Ubuntu 16.04, using gcc 6.3.
 
 
 Optimisation notes
@@ -308,6 +308,95 @@ Data set fits in cache: None
  c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 55
  c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 28
  c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 21
+
+
+25-08-2018 timing runs
+======================
+
+Running on a HP Z640 with dual Xeon E5-2620 v3, with two 8GB ECC RDDR4 1866MHz DIMMs per processor.
+Note that the code didn't set an explicit NUMA node for allocations (the code was originally
+written for a uniprocessor system).
+
+Test steps:
+1. When booting Ubuntu 16.04 LTS with Kernel 4.4.0-133-generic #159-Ubuntu SMP added the following
+command line options:
+   intel_pstate=disable 1
+
+The first option disable the Intel pstate driver which performs dynamic frequency scaling.
+
+The second option boots into runlevel 1 - command line, single user, no networking
+
+2. As root allocate space for hugepages:
+echo 50 > /proc/sys/vm/nr_hugepages
+
+3. As a normal user:
+ulimit -l unlimited -r 50
+cd AVX_matrix_multiply/
+/usr/local/MATLAB/R2018a/bin/matlab -nojvm -nodisplay -nosplash
+
+4. In Matlab:
+set_linux_cpu_freq (1800000)
+matrix_test
+
+The results are in 20180825T122901_E5-2620_v3_1800MHz_matrix_test.csv
+
+
+>> compare_matrix_test_results
+
+Processing /home/mr_halfword/AVX_matrix_multiply/20180825T122901_E5-2620_v3_1800MHz_matrix_test.csv
+Data set fits in cache: L1  Matrix Allocation Method: avx_align
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 970
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 398
+ c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 70
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 56
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 41
+ c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 41
+Data set fits in cache: L2  Matrix Allocation Method: avx_align
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 711
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 276
+ c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 31
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 27
+ c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 21
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 17
+Data set fits in cache: L3  Matrix Allocation Method: avx_align
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 1431
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 361
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 238
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 50
+ c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 21
+ c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 17
+Data set fits in cache: None  Matrix Allocation Method: avx_align
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 198
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 58
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 11
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 10
+Data set fits in cache: L1  Matrix Allocation Method: l1d_stride
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 1056
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 285
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 153
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 39
+ c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 25
+ c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 18
+Data set fits in cache: L2  Matrix Allocation Method: l1d_stride
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 852
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 136
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 65
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 15
+ c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 9
+ c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 6
+Data set fits in cache: L3  Matrix Allocation Method: l1d_stride
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 1698
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 278
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 114
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 20
+ c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 5
+ c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 3
+Data set fits in cache: None  Matrix Allocation Method: l1d_stride
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 213
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 33
+ c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 26
+ c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 5
+
 
 
 Notes for old timing results

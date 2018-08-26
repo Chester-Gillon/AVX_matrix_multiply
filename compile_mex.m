@@ -8,19 +8,15 @@ function compile_mex
     % As of Matlab 2018a the version currently supported by MEX is '6.3.x'.
     % Therefore, if gcc-6.3 is installed use that specific version.
     %
-    % The following was done to install gcc-6.3:
-    %  sudo add-apt-repository ppa:jonathonf/gcc-6.3
-    %  sudo apt-get update
-    %  sudo apt-get install gcc-6 g++-6
+    % GCC 6.3.1 was installed from gnat-gpl-2017-x86_64-linux-bin.tar.gz
+    % downloaded from https://www.adacore.com/download/more. The install
+    % root was set to /opt/GNAT/2017.
     %
-    % Notes:
-    % a) g++-6 is installed since mex adds stdc++ to the list of libraries.
-    % b) Had to install 6.3 from the Personal Package Archive at
-    %    https://launchpad.net/~jonathonf/+archive/ubuntu/gcc-6.3 since
-    %    there is no offical Unbuntu package for gcc 6.3
-    % c) http://ppa.launchpad.net/ubuntu-toolchain-r/test/ubuntu contains a
-    %    conflicting package also named gcc-6 which is for gcc 6.4.
-    mex_preferred_gcc_version='/usr/bin/gcc-6';
+    % Note that while https://launchpad.net/~jonathonf/+archive/ubuntu/gcc-6.3
+    % has gcc-6.3 packaged for Ubuntu, that package can't be installed on a
+    % machine with Beyond Compare 4. due to a conflict on the version of
+    % gcc-6-base.
+    mex_preferred_gcc_version='/opt/GNAT/2017/bin/gcc';
     if exist (mex_preferred_gcc_version,'file') == 2
         gcc_ver = ['GCC=' mex_preferred_gcc_version];
     else

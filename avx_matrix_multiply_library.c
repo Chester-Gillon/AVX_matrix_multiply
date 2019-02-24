@@ -69,26 +69,26 @@ SAL_i32 zmat_mulx_avx_dot_product_length_8 (SAL_zf32 *A, 	/* left input matrix *
     
     for (c_c_index = 0; c_c_index < nc_c; c_c_index += 8)
     {
-        B_r0_real = _mm256_load_ps (&B->realp[(0 * B_tcols) + c_c_index]);
-        B_r0_imag = _mm256_load_ps (&B->imagp[(0 * B_tcols) + c_c_index]);
-        B_r1_real = _mm256_load_ps (&B->realp[(1 * B_tcols) + c_c_index]);
-        B_r1_imag = _mm256_load_ps (&B->imagp[(1 * B_tcols) + c_c_index]);
-        B_r2_real = _mm256_load_ps (&B->realp[(2 * B_tcols) + c_c_index]);
-        B_r2_imag = _mm256_load_ps (&B->imagp[(2 * B_tcols) + c_c_index]);
-        B_r3_real = _mm256_load_ps (&B->realp[(3 * B_tcols) + c_c_index]);
-        B_r3_imag = _mm256_load_ps (&B->imagp[(3 * B_tcols) + c_c_index]);
-        B_r4_real = _mm256_load_ps (&B->realp[(4 * B_tcols) + c_c_index]);
-        B_r4_imag = _mm256_load_ps (&B->imagp[(4 * B_tcols) + c_c_index]);
-        B_r5_real = _mm256_load_ps (&B->realp[(5 * B_tcols) + c_c_index]);
-        B_r5_imag = _mm256_load_ps (&B->imagp[(5 * B_tcols) + c_c_index]);
-        B_r6_real = _mm256_load_ps (&B->realp[(6 * B_tcols) + c_c_index]);
-        B_r6_imag = _mm256_load_ps (&B->imagp[(6 * B_tcols) + c_c_index]);
-        B_r7_real = _mm256_load_ps (&B->realp[(7 * B_tcols) + c_c_index]);
-        B_r7_imag = _mm256_load_ps (&B->imagp[(7 * B_tcols) + c_c_index]);
+        B_r0_real = _mm256_loadu_ps (&B->realp[(0 * B_tcols) + c_c_index]);
+        B_r0_imag = _mm256_loadu_ps (&B->imagp[(0 * B_tcols) + c_c_index]);
+        B_r1_real = _mm256_loadu_ps (&B->realp[(1 * B_tcols) + c_c_index]);
+        B_r1_imag = _mm256_loadu_ps (&B->imagp[(1 * B_tcols) + c_c_index]);
+        B_r2_real = _mm256_loadu_ps (&B->realp[(2 * B_tcols) + c_c_index]);
+        B_r2_imag = _mm256_loadu_ps (&B->imagp[(2 * B_tcols) + c_c_index]);
+        B_r3_real = _mm256_loadu_ps (&B->realp[(3 * B_tcols) + c_c_index]);
+        B_r3_imag = _mm256_loadu_ps (&B->imagp[(3 * B_tcols) + c_c_index]);
+        B_r4_real = _mm256_loadu_ps (&B->realp[(4 * B_tcols) + c_c_index]);
+        B_r4_imag = _mm256_loadu_ps (&B->imagp[(4 * B_tcols) + c_c_index]);
+        B_r5_real = _mm256_loadu_ps (&B->realp[(5 * B_tcols) + c_c_index]);
+        B_r5_imag = _mm256_loadu_ps (&B->imagp[(5 * B_tcols) + c_c_index]);
+        B_r6_real = _mm256_loadu_ps (&B->realp[(6 * B_tcols) + c_c_index]);
+        B_r6_imag = _mm256_loadu_ps (&B->imagp[(6 * B_tcols) + c_c_index]);
+        B_r7_real = _mm256_loadu_ps (&B->realp[(7 * B_tcols) + c_c_index]);
+        B_r7_imag = _mm256_loadu_ps (&B->imagp[(7 * B_tcols) + c_c_index]);
         
         for (r_c_index = 0; r_c_index < nr_c; r_c_index++)
         {
-            _mm256_store_ps (&C->realp[(r_c_index * C_tcols) + c_c_index],
+            _mm256_storeu_ps (&C->realp[(r_c_index * C_tcols) + c_c_index],
                _mm256_add_ps (
                  _mm256_add_ps (
                     _mm256_add_ps (_mm256_sub_ps (_mm256_mul_ps (B_r0_real, A_c0_real[r_c_index]),
@@ -109,7 +109,7 @@ SAL_i32 zmat_mulx_avx_dot_product_length_8 (SAL_zf32 *A, 	/* left input matrix *
                                    _mm256_sub_ps (_mm256_mul_ps (B_r7_real, A_c7_real[r_c_index]),
                                                   _mm256_mul_ps (B_r7_imag, A_c7_imag[r_c_index]))))));
 
-            _mm256_store_ps (&C->imagp[(r_c_index * C_tcols) + c_c_index],
+            _mm256_storeu_ps (&C->imagp[(r_c_index * C_tcols) + c_c_index],
                _mm256_add_ps (
                  _mm256_add_ps (
                     _mm256_add_ps (_mm256_add_ps (_mm256_mul_ps (B_r0_imag, A_c0_real[r_c_index]),
@@ -184,26 +184,26 @@ SAL_i32 cmat_mulx_avx_dot_product_length_8 (SAL_cf32 *A, 	/* left input matrix *
     
     for (c_c_index = 0; c_c_index < nc_c; c_c_index += 4)
     {
-        B_r0_real_imag = _mm256_load_ps (&B[(0 * B_tcols) + c_c_index].real);
+        B_r0_real_imag = _mm256_loadu_ps (&B[(0 * B_tcols) + c_c_index].real);
         B_r0_imag_real = _mm256_permute_ps (B_r0_real_imag, SWAP_REAL_IMAG_PERMUTE);
-        B_r1_real_imag = _mm256_load_ps (&B[(1 * B_tcols) + c_c_index].real);
+        B_r1_real_imag = _mm256_loadu_ps (&B[(1 * B_tcols) + c_c_index].real);
         B_r1_imag_real = _mm256_permute_ps (B_r1_real_imag, SWAP_REAL_IMAG_PERMUTE);
-        B_r2_real_imag = _mm256_load_ps (&B[(2 * B_tcols) + c_c_index].real);
+        B_r2_real_imag = _mm256_loadu_ps (&B[(2 * B_tcols) + c_c_index].real);
         B_r2_imag_real = _mm256_permute_ps (B_r2_real_imag, SWAP_REAL_IMAG_PERMUTE);
-        B_r3_real_imag = _mm256_load_ps (&B[(3 * B_tcols) + c_c_index].real);
+        B_r3_real_imag = _mm256_loadu_ps (&B[(3 * B_tcols) + c_c_index].real);
         B_r3_imag_real = _mm256_permute_ps (B_r3_real_imag, SWAP_REAL_IMAG_PERMUTE);
-        B_r4_real_imag = _mm256_load_ps (&B[(4 * B_tcols) + c_c_index].real);
+        B_r4_real_imag = _mm256_loadu_ps (&B[(4 * B_tcols) + c_c_index].real);
         B_r4_imag_real = _mm256_permute_ps (B_r4_real_imag, SWAP_REAL_IMAG_PERMUTE);
-        B_r5_real_imag = _mm256_load_ps (&B[(5 * B_tcols) + c_c_index].real);
+        B_r5_real_imag = _mm256_loadu_ps (&B[(5 * B_tcols) + c_c_index].real);
         B_r5_imag_real = _mm256_permute_ps (B_r5_real_imag, SWAP_REAL_IMAG_PERMUTE);
-        B_r6_real_imag = _mm256_load_ps (&B[(6 * B_tcols) + c_c_index].real);
+        B_r6_real_imag = _mm256_loadu_ps (&B[(6 * B_tcols) + c_c_index].real);
         B_r6_imag_real = _mm256_permute_ps (B_r6_real_imag, SWAP_REAL_IMAG_PERMUTE);
-        B_r7_real_imag = _mm256_load_ps (&B[(7 * B_tcols) + c_c_index].real);
+        B_r7_real_imag = _mm256_loadu_ps (&B[(7 * B_tcols) + c_c_index].real);
         B_r7_imag_real = _mm256_permute_ps (B_r7_real_imag, SWAP_REAL_IMAG_PERMUTE);
         
         for (r_c_index = 0; r_c_index < nr_c; r_c_index++)
         {
-            _mm256_store_ps (&C[(r_c_index * C_tcols) + c_c_index].real,
+            _mm256_storeu_ps (&C[(r_c_index * C_tcols) + c_c_index].real,
               _mm256_add_ps(
                  _mm256_add_ps (
                      _mm256_add_ps (_mm256_addsub_ps (_mm256_mul_ps (B_r0_real_imag, A_c0_real[r_c_index]),
@@ -279,26 +279,26 @@ SAL_i32 cmat_mulx_avx_fma_dot_product_length_8 (SAL_cf32 *A, 	/* left input matr
     
     for (c_c_index = 0; c_c_index < nc_c; c_c_index += 4)
     {
-        B_r0_real_imag = _mm256_load_ps (&B[(0 * B_tcols) + c_c_index].real);
+        B_r0_real_imag = _mm256_loadu_ps (&B[(0 * B_tcols) + c_c_index].real);
         B_r0_imag_real = _mm256_permute_ps (B_r0_real_imag, SWAP_REAL_IMAG_PERMUTE);
-        B_r1_real_imag = _mm256_load_ps (&B[(1 * B_tcols) + c_c_index].real);
+        B_r1_real_imag = _mm256_loadu_ps (&B[(1 * B_tcols) + c_c_index].real);
         B_r1_imag_real = _mm256_permute_ps (B_r1_real_imag, SWAP_REAL_IMAG_PERMUTE);
-        B_r2_real_imag = _mm256_load_ps (&B[(2 * B_tcols) + c_c_index].real);
+        B_r2_real_imag = _mm256_loadu_ps (&B[(2 * B_tcols) + c_c_index].real);
         B_r2_imag_real = _mm256_permute_ps (B_r2_real_imag, SWAP_REAL_IMAG_PERMUTE);
-        B_r3_real_imag = _mm256_load_ps (&B[(3 * B_tcols) + c_c_index].real);
+        B_r3_real_imag = _mm256_loadu_ps (&B[(3 * B_tcols) + c_c_index].real);
         B_r3_imag_real = _mm256_permute_ps (B_r3_real_imag, SWAP_REAL_IMAG_PERMUTE);
-        B_r4_real_imag = _mm256_load_ps (&B[(4 * B_tcols) + c_c_index].real);
+        B_r4_real_imag = _mm256_loadu_ps (&B[(4 * B_tcols) + c_c_index].real);
         B_r4_imag_real = _mm256_permute_ps (B_r4_real_imag, SWAP_REAL_IMAG_PERMUTE);
-        B_r5_real_imag = _mm256_load_ps (&B[(5 * B_tcols) + c_c_index].real);
+        B_r5_real_imag = _mm256_loadu_ps (&B[(5 * B_tcols) + c_c_index].real);
         B_r5_imag_real = _mm256_permute_ps (B_r5_real_imag, SWAP_REAL_IMAG_PERMUTE);
-        B_r6_real_imag = _mm256_load_ps (&B[(6 * B_tcols) + c_c_index].real);
+        B_r6_real_imag = _mm256_loadu_ps (&B[(6 * B_tcols) + c_c_index].real);
         B_r6_imag_real = _mm256_permute_ps (B_r6_real_imag, SWAP_REAL_IMAG_PERMUTE);
-        B_r7_real_imag = _mm256_load_ps (&B[(7 * B_tcols) + c_c_index].real);
+        B_r7_real_imag = _mm256_loadu_ps (&B[(7 * B_tcols) + c_c_index].real);
         B_r7_imag_real = _mm256_permute_ps (B_r7_real_imag, SWAP_REAL_IMAG_PERMUTE);
         
         for (r_c_index = 0; r_c_index < nr_c; r_c_index++)
         {
-            _mm256_store_ps (&C[(r_c_index * C_tcols) + c_c_index].real,
+            _mm256_storeu_ps (&C[(r_c_index * C_tcols) + c_c_index].real,
               _mm256_add_ps(
                  _mm256_add_ps (
                      _mm256_add_ps (_mm256_fmadd_ps (               B_r0_real_imag, A_c0_real[r_c_index],

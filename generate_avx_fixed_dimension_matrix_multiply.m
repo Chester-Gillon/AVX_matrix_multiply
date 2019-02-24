@@ -163,7 +163,7 @@ function num_vfops = generate_function (c_fid, h_fid, func_name, nr_c, dot_produ
     
     % Write code to load one column of the right matrix into AVX vectors
     for row = 0:dot_product_length-1
-        fprintf (c_fid, '        right_r%u_r_i = _mm256_load_ps (&(B[%u] + c_c)->real);\n', row, row);
+        fprintf (c_fid, '        right_r%u_r_i = _mm256_loadu_ps (&(B[%u] + c_c)->real);\n', row, row);
         fprintf (c_fid, '        right_r%u_i_r = _mm256_permute_ps (right_r%u_r_i, SWAP_REAL_IMAG_PERMUTE);\n', row, row);
     end
     
@@ -188,7 +188,7 @@ function [lines, num_vfops] = generate_dot_product_calc (left_row, dot_product_l
     indices = split_dot_product_indices (dot_product_indices);
     lines = {
 '' ...
-sprintf('        _mm256_store_ps (&(C[%u] + c_c)->real,', left_row)};
+sprintf('        _mm256_storeu_ps (&(C[%u] + c_c)->real,', left_row)};
     expression_depth = 0;
     num_add_open_brackets = 0;
     [lines, num_vfops] = generate_dot_product_lines (lines, num_vfops, indices, expression_depth, num_add_open_brackets, left_row);

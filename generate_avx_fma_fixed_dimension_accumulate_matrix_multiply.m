@@ -183,7 +183,7 @@ function num_vfops = generate_function (c_fid, h_fid, func_name, nr_c, dot_produ
     % accumulate the output column.
     num_vfops = 0;
     for right_row = 0:dot_product_length-1
-        fprintf(c_fid, '        right_r_i = _mm256_load_ps (&(B[%u] + c_c)->real);\n',right_row);
+        fprintf(c_fid, '        right_r_i = _mm256_loadu_ps (&(B[%u] + c_c)->real);\n',right_row);
         fprintf(c_fid, '        right_i_r = _mm256_permute_ps (right_r_i, SWAP_REAL_IMAG_PERMUTE);\n');
         for output_row = 0:nr_c-1
             output_row_padding = repmat(' ',[1 length(num2str(output_row))]);
@@ -196,8 +196,8 @@ function num_vfops = generate_function (c_fid, h_fid, func_name, nr_c, dot_produ
                 fprintf(c_fid, '                %s                    _mm256_fmadd_ps (right_i_r, left_r%u_c%u_i, output_r%u));\n',output_row_padding,output_row,right_row,output_row);
                 num_vfops = num_vfops + 2;
             else
-                fprintf(c_fid, '        _mm256_store_ps (&(C[%u] + c_c)->real, _mm256_fmadd_ps (                 right_r_i, left_r%u_c%u_r,\n',output_row,output_row,right_row);
-                fprintf(c_fid, '                             %s                                 _mm256_fmadd_ps (right_i_r, left_r%u_c%u_i, output_r%u)));\n',output_row_padding,output_row,right_row,output_row);
+                fprintf(c_fid, '        _mm256_storeu_ps (&(C[%u] + c_c)->real, _mm256_fmadd_ps (                 right_r_i, left_r%u_c%u_r,\n',output_row,output_row,right_row);
+                fprintf(c_fid, '                              %s                                 _mm256_fmadd_ps (right_i_r, left_r%u_c%u_i, output_r%u)));\n',output_row_padding,output_row,right_row,output_row);
                 num_vfops = num_vfops + 2;
             end
         end

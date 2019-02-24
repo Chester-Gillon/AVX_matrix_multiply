@@ -4,7 +4,7 @@ AVX_matrix_multiply
 Experiment for generating optimised AVX and FMA matrix multiply functions.
 The data types are 32-bit float complex-split and complex-interleave format.
 
-The software has been developed using Matlab R2018A mex under Linux 64-bit on Ubuntu 16.04, using gcc 6.3.
+The software has been developed using Matlab R2018b mex under Linux 64-bit on Ubuntu 18.04, using gcc 6.3.
 
 
 Optimisation notes
@@ -396,6 +396,82 @@ Data set fits in cache: None  Matrix Allocation Method: l1d_stride
  c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply : 33
  c_avx_fixed_dimension_fma_accumulate_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_matrix_multiply : 26
  c_avx_fixed_dimension_matrix_multiply > c_avx_fixed_dimension_accumulate_matrix_multiply > c_avx_fixed_dimension_fma_accumulate_matrix_multiply : 5
+
+
+27-01-2019 timing runs
+======================
+
+Running on a HP Z640 with dual Xeon E5-2620 v3, with two 8GB ECC RDDR4 1866MHz DIMMs per processor.
+Note that the code didn't set an explicit NUMA node for allocations (the code was originally
+written for a uniprocessor system).
+
+For this test changed the AVX load/store intrinsics to allow unaligned access, rather than the previous code which required aligned access.
+
+With unaligned load/store intrinsics the code size was:
+$ size *.mexa64
+   text	   data	    bss	    dec	    hex	filename
+3135735	   4640	     24	3140399	 2feb2f	c_avx_fixed_dimension_accumulate_matrix_multiply.mexa64
+2597067	   4640	     24	2601731	 27b303	c_avx_fixed_dimension_fma_accumulate_matrix_multiply.mexa64
+3379548	   4640	     24	3384212	 33a394	c_avx_fixed_dimension_matrix_multiply.mexa64
+  22851	   1088	     24	  23963	   5d9b	c_avx_fma_interleave_matrix_multiply.mexa64
+  22847	   1088	     24	  23959	   5d97	c_avx_interleave_matrix_multiply.mexa64
+  22754	   1088	     24	  23866	   5d3a	c_avx_split_matrix_multiply.mexa64
+  18264	   1088	     24	  19376	   4bb0	c_matrix_multiply.mexa64
+  20815	   1096	     24	  21935	   55af	c_opensal_matrix_multiply.mexa64
+   4379	    744	     32	   5155	   1423	cpu_supports.mexa64
+   3412	    768	      8	   4188	   105c	fp_classify_matrix.mexa64
+
+Whereas with aligned load/store intrinsics the code was was:
+$ size *.mexa64
+   text	   data	    bss	    dec	    hex	filename
+3120039	   4640	     24	3124703	 2faddf	c_avx_fixed_dimension_accumulate_matrix_multiply.mexa64
+2581195	   4640	     24	2585859	 277503	c_avx_fixed_dimension_fma_accumulate_matrix_multiply.mexa64
+3363916	   4640	     24	3368580	 336684	c_avx_fixed_dimension_matrix_multiply.mexa64
+  22835	   1088	     24	  23947	   5d8b	c_avx_fma_interleave_matrix_multiply.mexa64
+  22831	   1088	     24	  23943	   5d87	c_avx_interleave_matrix_multiply.mexa64
+  22738	   1088	     24	  23850	   5d2a	c_avx_split_matrix_multiply.mexa64
+  18296	   1088	     24	  19408	   4bd0	c_matrix_multiply.mexa64
+  20815	   1096	     24	  21935	   55af	c_opensal_matrix_multiply.mexa64
+   4379	    744	     32	   5155	   1423	cpu_supports.mexa64
+   3412	    768	      8	   4188	   105c	fp_classify_matrix.mexa64
+
+I.e. slightly increased code size with the switch to unaligned load/store instrinsics.
+
+20190127T135240_E5-2620_v3_1373-1797MHz_matrix_test.csv is a partial run (terminated run early due to lack of time).
+
+Spot checking a sample of timing results against the previous 20180825T122901_E5-2620_v3_1800MHz_matrix_test.csv
+measured with aligned load/store intrinsics shows an increase of from 5% to 20% more hw_instructions used as a result
+of changing from aligned to unanaligned load/store intrinsics.
+
+
+Test steps:
+1. When booting Ubuntu 18.04 LTS with 4.15.0-43-generic #46-Ubuntu SMP added the following
+command line options:
+   1
+
+The second option boots into runlevel 1 - command line, single user, no networking
+
+2. As root allocate space for hugepages:
+echo 50 > /proc/sys/vm/nr_hugepages
+
+3. As root allow CPU event access by users without CAP_SYS_ADMIN
+echo 0 | sudo tee /proc/sys/kernel/perf_event_paranoid
+
+4. As a normal user:
+sudo cpupower frequency-set -g performance
+sudo cpupower frequency-set -u 1800MHz
+sudo cpupower frequency-set -d 1800MHz
+ulimit -l unlimited -r 50
+cd AVX_matrix_multiply/
+/usr/local/MATLAB/R2018a/bin/matlab -nojvm -nodisplay -nosplash
+
+cpupower attempts to set a fixed 1.8GHz frequency, since intel_pstate=disable no longer seems to work.
+The frequency reported via /proc/cpuinfo is variable, but a CPU frequency mesurement test from ibv_message_passing on a single core appeared to
+show a 1.8 GHz frequency.
+
+
+5. In Matlab:
+matrix_test
 
 
 

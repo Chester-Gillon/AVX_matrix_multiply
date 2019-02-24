@@ -52,7 +52,7 @@ void cmat_mulx_avx_accumulate_nr_c_3_dot_product_length_3 (SAL_cf32 *A[3],  /* l
 #ifdef IACA_OPERATE
         IACA_START
 #endif
-        right_r_i = _mm256_load_ps (&(B[0] + c_c)->real);
+        right_r_i = _mm256_loadu_ps (&(B[0] + c_c)->real);
         right_i_r = _mm256_permute_ps (right_r_i, SWAP_REAL_IMAG_PERMUTE);
         output_r0 = _mm256_addsub_ps (_mm256_mul_ps (right_r_i, left_r0_c0_r),
                                       _mm256_mul_ps (right_i_r, left_r0_c0_i));
@@ -60,7 +60,7 @@ void cmat_mulx_avx_accumulate_nr_c_3_dot_product_length_3 (SAL_cf32 *A[3],  /* l
                                       _mm256_mul_ps (right_i_r, left_r1_c0_i));
         output_r2 = _mm256_addsub_ps (_mm256_mul_ps (right_r_i, left_r2_c0_r),
                                       _mm256_mul_ps (right_i_r, left_r2_c0_i));
-        right_r_i = _mm256_load_ps (&(B[1] + c_c)->real);
+        right_r_i = _mm256_loadu_ps (&(B[1] + c_c)->real);
         right_i_r = _mm256_permute_ps (right_r_i, SWAP_REAL_IMAG_PERMUTE);
         output_r0 = _mm256_add_ps (output_r0, _mm256_addsub_ps (_mm256_mul_ps (right_r_i, left_r0_c1_r),
                                                                 _mm256_mul_ps (right_i_r, left_r0_c1_i)));
@@ -68,14 +68,14 @@ void cmat_mulx_avx_accumulate_nr_c_3_dot_product_length_3 (SAL_cf32 *A[3],  /* l
                                                                 _mm256_mul_ps (right_i_r, left_r1_c1_i)));
         output_r2 = _mm256_add_ps (output_r2, _mm256_addsub_ps (_mm256_mul_ps (right_r_i, left_r2_c1_r),
                                                                 _mm256_mul_ps (right_i_r, left_r2_c1_i)));
-        right_r_i = _mm256_load_ps (&(B[2] + c_c)->real);
+        right_r_i = _mm256_loadu_ps (&(B[2] + c_c)->real);
         right_i_r = _mm256_permute_ps (right_r_i, SWAP_REAL_IMAG_PERMUTE);
-        _mm256_store_ps (&(C[0] + c_c)->real, _mm256_add_ps (output_r0, _mm256_addsub_ps (_mm256_mul_ps (right_r_i, left_r0_c2_r),
-                                                                                          _mm256_mul_ps (right_i_r, left_r0_c2_i))));
-        _mm256_store_ps (&(C[1] + c_c)->real, _mm256_add_ps (output_r1, _mm256_addsub_ps (_mm256_mul_ps (right_r_i, left_r1_c2_r),
-                                                                                          _mm256_mul_ps (right_i_r, left_r1_c2_i))));
-        _mm256_store_ps (&(C[2] + c_c)->real, _mm256_add_ps (output_r2, _mm256_addsub_ps (_mm256_mul_ps (right_r_i, left_r2_c2_r),
-                                                                                          _mm256_mul_ps (right_i_r, left_r2_c2_i))));
+        _mm256_storeu_ps (&(C[0] + c_c)->real, _mm256_add_ps (output_r0, _mm256_addsub_ps (_mm256_mul_ps (right_r_i, left_r0_c2_r),
+                                                                                           _mm256_mul_ps (right_i_r, left_r0_c2_i))));
+        _mm256_storeu_ps (&(C[1] + c_c)->real, _mm256_add_ps (output_r1, _mm256_addsub_ps (_mm256_mul_ps (right_r_i, left_r1_c2_r),
+                                                                                           _mm256_mul_ps (right_i_r, left_r1_c2_i))));
+        _mm256_storeu_ps (&(C[2] + c_c)->real, _mm256_add_ps (output_r2, _mm256_addsub_ps (_mm256_mul_ps (right_r_i, left_r2_c2_r),
+                                                                                           _mm256_mul_ps (right_i_r, left_r2_c2_i))));
     }
 #ifdef IACA_OPERATE
     IACA_END

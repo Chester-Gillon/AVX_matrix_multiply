@@ -100,82 +100,82 @@ void cmat_mulx_avx_nr_c_11_dot_product_length_2 (SAL_cf32 *A[11], /* left input 
 #ifdef IACA_OPERATE
         IACA_START
 #endif
-        right_r0_r_i = _mm256_load_ps (&(B[0] + c_c)->real);
+        right_r0_r_i = _mm256_loadu_ps (&(B[0] + c_c)->real);
         right_r0_i_r = _mm256_permute_ps (right_r0_r_i, SWAP_REAL_IMAG_PERMUTE);
-        right_r1_r_i = _mm256_load_ps (&(B[1] + c_c)->real);
+        right_r1_r_i = _mm256_loadu_ps (&(B[1] + c_c)->real);
         right_r1_i_r = _mm256_permute_ps (right_r1_r_i, SWAP_REAL_IMAG_PERMUTE);
 
-        _mm256_store_ps (&(C[0] + c_c)->real,
+        _mm256_storeu_ps (&(C[0] + c_c)->real,
             _mm256_add_ps(
                 _mm256_addsub_ps (_mm256_mul_ps (right_r0_r_i, left_r0_c0_r),
                                   _mm256_mul_ps (right_r0_i_r, left_r0_c0_i)),
                 _mm256_addsub_ps (_mm256_mul_ps (right_r1_r_i, left_r0_c1_r),
                                   _mm256_mul_ps (right_r1_i_r, left_r0_c1_i))));
 
-        _mm256_store_ps (&(C[1] + c_c)->real,
+        _mm256_storeu_ps (&(C[1] + c_c)->real,
             _mm256_add_ps(
                 _mm256_addsub_ps (_mm256_mul_ps (right_r0_r_i, left_r1_c0_r),
                                   _mm256_mul_ps (right_r0_i_r, left_r1_c0_i)),
                 _mm256_addsub_ps (_mm256_mul_ps (right_r1_r_i, left_r1_c1_r),
                                   _mm256_mul_ps (right_r1_i_r, left_r1_c1_i))));
 
-        _mm256_store_ps (&(C[2] + c_c)->real,
+        _mm256_storeu_ps (&(C[2] + c_c)->real,
             _mm256_add_ps(
                 _mm256_addsub_ps (_mm256_mul_ps (right_r0_r_i, left_r2_c0_r),
                                   _mm256_mul_ps (right_r0_i_r, left_r2_c0_i)),
                 _mm256_addsub_ps (_mm256_mul_ps (right_r1_r_i, left_r2_c1_r),
                                   _mm256_mul_ps (right_r1_i_r, left_r2_c1_i))));
 
-        _mm256_store_ps (&(C[3] + c_c)->real,
+        _mm256_storeu_ps (&(C[3] + c_c)->real,
             _mm256_add_ps(
                 _mm256_addsub_ps (_mm256_mul_ps (right_r0_r_i, left_r3_c0_r),
                                   _mm256_mul_ps (right_r0_i_r, left_r3_c0_i)),
                 _mm256_addsub_ps (_mm256_mul_ps (right_r1_r_i, left_r3_c1_r),
                                   _mm256_mul_ps (right_r1_i_r, left_r3_c1_i))));
 
-        _mm256_store_ps (&(C[4] + c_c)->real,
+        _mm256_storeu_ps (&(C[4] + c_c)->real,
             _mm256_add_ps(
                 _mm256_addsub_ps (_mm256_mul_ps (right_r0_r_i, left_r4_c0_r),
                                   _mm256_mul_ps (right_r0_i_r, left_r4_c0_i)),
                 _mm256_addsub_ps (_mm256_mul_ps (right_r1_r_i, left_r4_c1_r),
                                   _mm256_mul_ps (right_r1_i_r, left_r4_c1_i))));
 
-        _mm256_store_ps (&(C[5] + c_c)->real,
+        _mm256_storeu_ps (&(C[5] + c_c)->real,
             _mm256_add_ps(
                 _mm256_addsub_ps (_mm256_mul_ps (right_r0_r_i, left_r5_c0_r),
                                   _mm256_mul_ps (right_r0_i_r, left_r5_c0_i)),
                 _mm256_addsub_ps (_mm256_mul_ps (right_r1_r_i, left_r5_c1_r),
                                   _mm256_mul_ps (right_r1_i_r, left_r5_c1_i))));
 
-        _mm256_store_ps (&(C[6] + c_c)->real,
+        _mm256_storeu_ps (&(C[6] + c_c)->real,
             _mm256_add_ps(
                 _mm256_addsub_ps (_mm256_mul_ps (right_r0_r_i, left_r6_c0_r),
                                   _mm256_mul_ps (right_r0_i_r, left_r6_c0_i)),
                 _mm256_addsub_ps (_mm256_mul_ps (right_r1_r_i, left_r6_c1_r),
                                   _mm256_mul_ps (right_r1_i_r, left_r6_c1_i))));
 
-        _mm256_store_ps (&(C[7] + c_c)->real,
+        _mm256_storeu_ps (&(C[7] + c_c)->real,
             _mm256_add_ps(
                 _mm256_addsub_ps (_mm256_mul_ps (right_r0_r_i, left_r7_c0_r),
                                   _mm256_mul_ps (right_r0_i_r, left_r7_c0_i)),
                 _mm256_addsub_ps (_mm256_mul_ps (right_r1_r_i, left_r7_c1_r),
                                   _mm256_mul_ps (right_r1_i_r, left_r7_c1_i))));
 
-        _mm256_store_ps (&(C[8] + c_c)->real,
+        _mm256_storeu_ps (&(C[8] + c_c)->real,
             _mm256_add_ps(
                 _mm256_addsub_ps (_mm256_mul_ps (right_r0_r_i, left_r8_c0_r),
                                   _mm256_mul_ps (right_r0_i_r, left_r8_c0_i)),
                 _mm256_addsub_ps (_mm256_mul_ps (right_r1_r_i, left_r8_c1_r),
                                   _mm256_mul_ps (right_r1_i_r, left_r8_c1_i))));
 
-        _mm256_store_ps (&(C[9] + c_c)->real,
+        _mm256_storeu_ps (&(C[9] + c_c)->real,
             _mm256_add_ps(
                 _mm256_addsub_ps (_mm256_mul_ps (right_r0_r_i, left_r9_c0_r),
                                   _mm256_mul_ps (right_r0_i_r, left_r9_c0_i)),
                 _mm256_addsub_ps (_mm256_mul_ps (right_r1_r_i, left_r9_c1_r),
                                   _mm256_mul_ps (right_r1_i_r, left_r9_c1_i))));
 
-        _mm256_store_ps (&(C[10] + c_c)->real,
+        _mm256_storeu_ps (&(C[10] + c_c)->real,
             _mm256_add_ps(
                 _mm256_addsub_ps (_mm256_mul_ps (right_r0_r_i, left_r10_c0_r),
                                   _mm256_mul_ps (right_r0_i_r, left_r10_c0_i)),

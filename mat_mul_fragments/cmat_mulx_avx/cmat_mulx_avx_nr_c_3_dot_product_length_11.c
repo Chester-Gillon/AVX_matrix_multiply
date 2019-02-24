@@ -107,30 +107,30 @@ void cmat_mulx_avx_nr_c_3_dot_product_length_11 (SAL_cf32 *A[3],  /* left input 
 #ifdef IACA_OPERATE
         IACA_START
 #endif
-        right_r0_r_i = _mm256_load_ps (&(B[0] + c_c)->real);
+        right_r0_r_i = _mm256_loadu_ps (&(B[0] + c_c)->real);
         right_r0_i_r = _mm256_permute_ps (right_r0_r_i, SWAP_REAL_IMAG_PERMUTE);
-        right_r1_r_i = _mm256_load_ps (&(B[1] + c_c)->real);
+        right_r1_r_i = _mm256_loadu_ps (&(B[1] + c_c)->real);
         right_r1_i_r = _mm256_permute_ps (right_r1_r_i, SWAP_REAL_IMAG_PERMUTE);
-        right_r2_r_i = _mm256_load_ps (&(B[2] + c_c)->real);
+        right_r2_r_i = _mm256_loadu_ps (&(B[2] + c_c)->real);
         right_r2_i_r = _mm256_permute_ps (right_r2_r_i, SWAP_REAL_IMAG_PERMUTE);
-        right_r3_r_i = _mm256_load_ps (&(B[3] + c_c)->real);
+        right_r3_r_i = _mm256_loadu_ps (&(B[3] + c_c)->real);
         right_r3_i_r = _mm256_permute_ps (right_r3_r_i, SWAP_REAL_IMAG_PERMUTE);
-        right_r4_r_i = _mm256_load_ps (&(B[4] + c_c)->real);
+        right_r4_r_i = _mm256_loadu_ps (&(B[4] + c_c)->real);
         right_r4_i_r = _mm256_permute_ps (right_r4_r_i, SWAP_REAL_IMAG_PERMUTE);
-        right_r5_r_i = _mm256_load_ps (&(B[5] + c_c)->real);
+        right_r5_r_i = _mm256_loadu_ps (&(B[5] + c_c)->real);
         right_r5_i_r = _mm256_permute_ps (right_r5_r_i, SWAP_REAL_IMAG_PERMUTE);
-        right_r6_r_i = _mm256_load_ps (&(B[6] + c_c)->real);
+        right_r6_r_i = _mm256_loadu_ps (&(B[6] + c_c)->real);
         right_r6_i_r = _mm256_permute_ps (right_r6_r_i, SWAP_REAL_IMAG_PERMUTE);
-        right_r7_r_i = _mm256_load_ps (&(B[7] + c_c)->real);
+        right_r7_r_i = _mm256_loadu_ps (&(B[7] + c_c)->real);
         right_r7_i_r = _mm256_permute_ps (right_r7_r_i, SWAP_REAL_IMAG_PERMUTE);
-        right_r8_r_i = _mm256_load_ps (&(B[8] + c_c)->real);
+        right_r8_r_i = _mm256_loadu_ps (&(B[8] + c_c)->real);
         right_r8_i_r = _mm256_permute_ps (right_r8_r_i, SWAP_REAL_IMAG_PERMUTE);
-        right_r9_r_i = _mm256_load_ps (&(B[9] + c_c)->real);
+        right_r9_r_i = _mm256_loadu_ps (&(B[9] + c_c)->real);
         right_r9_i_r = _mm256_permute_ps (right_r9_r_i, SWAP_REAL_IMAG_PERMUTE);
-        right_r10_r_i = _mm256_load_ps (&(B[10] + c_c)->real);
+        right_r10_r_i = _mm256_loadu_ps (&(B[10] + c_c)->real);
         right_r10_i_r = _mm256_permute_ps (right_r10_r_i, SWAP_REAL_IMAG_PERMUTE);
 
-        _mm256_store_ps (&(C[0] + c_c)->real,
+        _mm256_storeu_ps (&(C[0] + c_c)->real,
             _mm256_add_ps(
                 _mm256_add_ps(
                     _mm256_add_ps(
@@ -164,7 +164,7 @@ void cmat_mulx_avx_nr_c_3_dot_product_length_11 (SAL_cf32 *A[3],  /* left input 
                         _mm256_addsub_ps (_mm256_mul_ps (right_r10_r_i, left_r0_c10_r),
                                           _mm256_mul_ps (right_r10_i_r, left_r0_c10_i))))));
 
-        _mm256_store_ps (&(C[1] + c_c)->real,
+        _mm256_storeu_ps (&(C[1] + c_c)->real,
             _mm256_add_ps(
                 _mm256_add_ps(
                     _mm256_add_ps(
@@ -198,7 +198,7 @@ void cmat_mulx_avx_nr_c_3_dot_product_length_11 (SAL_cf32 *A[3],  /* left input 
                         _mm256_addsub_ps (_mm256_mul_ps (right_r10_r_i, left_r1_c10_r),
                                           _mm256_mul_ps (right_r10_i_r, left_r1_c10_i))))));
 
-        _mm256_store_ps (&(C[2] + c_c)->real,
+        _mm256_storeu_ps (&(C[2] + c_c)->real,
             _mm256_add_ps(
                 _mm256_add_ps(
                     _mm256_add_ps(
